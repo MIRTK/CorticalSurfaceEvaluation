@@ -8,13 +8,11 @@ command.
 
 ## Package
 
-This application uses NW.js and can be packaged for macOS with the following commands:
-
 ### Install Node.js
 
 #### Ubuntu
 
-This application was developed with Node.js 7.2. Earlier versions may work as well,
+This application was developed with [Node.js](https://nodejs.org/en/) 7.2. Earlier versions may work as well,
 including the version available through the official Ubuntu 14.04 `nodejs` package.
 However, `nwbuild` to create a package failed with this version.
 Therefore, use `nvm` to install a more recent version with the commands below or
@@ -35,7 +33,7 @@ brew install node npm
 
 ### Install NW.js
 
-This application was developed with NW.js 0.19.0.
+This application was developed with [NW.js](https://nwjs.io/) 0.19.0.
 
 ```
 npm install -g nw nw-gyp nw-builder
@@ -43,6 +41,13 @@ npm install -g nw nw-gyp nw-builder
 
 ### Dependencies
 
+Required dependencies are
+- [jQuery](https://jquery.com/
+= [Tether](http://tether.io/) (required by Bootstrap 4)
+- [Bootstrap 4](https://v4-alpha.getbootstrap.com/)
+- [node-sqlite3](https://github.com/mapbox/node-sqlite3)
+
+You can install these easily with the following [npm](https://www.npmjs.com/) commands:
 ```
 cd app.nw
 npm install jquery tether bootstrap@4.0.0-alpha.5
