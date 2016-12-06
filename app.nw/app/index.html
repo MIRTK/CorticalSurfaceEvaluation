@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta content="text/html; charset=windows-1252" http-equiv="content-type">
+    <title>Cortical Surface Evaluation</title>
+    <link href="../node_modules/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="app.css" rel="stylesheet">
+  </head>
+  <body data-feedly-mini="yes">
+    <!-- Navigation -->
+    <nav class="navbar navbar-dark bg-inverse">
+      <div class="nav navbar-nav">
+        <a class="nav-item nav-link active" href="#" id="nav-help">Help</a>
+        <a class="nav-item nav-link" href="#" id="nav-open">Tasks</a>
+      </div>
+    </nav>
+
+    <!-- Placeholder for error messages -->
+    <div id="alerts">
+
+    </div>
+
+    <template id="errorTemplate">
+      <div class="alert alert-danger alert-dismissible fade in" role="alert" id="msgBox">
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <p id="msg"></p>
+      </div>
+    </template>
+
+    <template id="successTemplate">
+      <div class="alert alert-success" role="alert" id="msgBox">
+        <p id="msg"></p>
+      </div>
+    </template>
+
+    <!-- Placeholder for individual pages -->
+    <div class="container theme-showcase" role="main" id="container">
+      
+    </div>
+
+    <!-- Help page -->
+    <template id="helpTemplate">
+      <div class="jumbotron">
+        <h1>Cortical Surface Evaluation</h1>
+        <p>
+          App for manual evaluation of the automatically reconstructed cortical surfaces.
+        </p>
+      </div>
+      <h2>Thank you!</h2>
+      <p>
+        Thanks for volunteering to visually rate the quality of the automatically reconstructed cortical surfaces!
+      </p>
+      <p>
+        Please use this application to record your scores in the provided database file which you find in the
+        top-level directory of the archive that also contained this application, named <mark>recon-neonatal-cortex.db</mark>.
+        The different evaluation tasks are detailed below together with instructions on how to use this application
+        to complete the respective task. Note that your scores are recorded in the database immediately once
+        submitted. You can take a break at any point, keep the application window open in the background,
+        or close it and re-open it again at a later time.
+      </p>
+      <h2>Task 1</h2>
+      <p>
+        The first evaluation task is to rate the accuracy with which a given reconstructed surface delineates the
+        true boundary between white matter and cortical grey matter. For each brain scan, you will be presented with
+        a varying number of screenshots taken from small regions of interest (ROIs) that have been pre-selected either
+        based on quantitative criteria such as considerable disagreement between tissue segmentation and reconstructed
+        surface or been chosen randomly. For each ROI, you are shown three orthogonal slices of the T2-weighted
+        brain MR volume with the contour of the reconstructed surface cut by the corresponding image plane overlayed.
+        Your task is to assign one of five different scores by clicking one of the coloured buttons corresponding to
+        your rating of the quality by which the contour in the current ROI follows the tissue boundary:
+        <table class="table">
+          <thead class="thead-default">
+            <tr>
+              <th>Score</th>
+              <th>Accuracy</th>
+              <th>Assessment criteria</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">1</th>
+              <td class="btn btn-sm btn-block btn-danger">Bad</td>
+              <td>Contour appears to follow random, noisy, or other tissue edge far from target boundary</td>
+            </tr>
+            <tr>
+              <th scope="row">2</th>
+              <td class="btn btn-sm btn-block btn-warning">Poor</td>
+              <td>Contour substantially deviates from tissue boundary, at least in parts</td>
+            </tr>
+            <tr>
+              <th scope="row">3</th>
+              <td class="btn btn-sm btn-block btn-info">Fair</td>
+              <td>Contour close to tissue boundary, but for the most part not with sub-pixel accuracy</td>
+            </tr>
+            <tr>
+              <th scope="row">4</th>
+              <td class="btn btn-sm btn-block btn-primary">Good</td>
+              <td>Contour depicts tissue boundary for the most part with only minor irregularities</td>
+            </tr>
+            <tr>
+              <th scope="row">5</th>
+              <td class="btn btn-sm btn-block btn-success">Excellent</td>
+              <td>Contour depicts tissue boundary within sub-pixel accuracy</td>
+            </tr>
+          </tbody>
+        </table>
+      </p>
+    </template>
+
+    <!-- Open database page -->
+    <template id="openTemplate">
+      <div class="jumbotron">
+        <h1>Cortical Surface Evaluation</h1>
+        <p>
+          Select database file with details of evaluation tasks and already recorded scores.
+          You are then asked to enter your email address and assigned password, which is used
+          to link your scores with your rater profile. A summary of the number of ROIs
+          that have been rated by you and how many more to rate in order to complete each
+          evaluation task will be shown after the log in into the database.
+        </p>
+      </div>
+      <div id="summary" class="collapse">
+        <table class="table">
+          <thead class="thead-inverse">
+            <tr>
+              <th>Task</th>
+              <th>Total</th>
+              <th>Done</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="eval" id="eval">
+              <th scope="row"><button class="btn btn-link">Task 1</button></th>
+              <td class="total">N/A</td>
+              <td class="remaining">N/A</td>
+              <td><span class="done">N/A</span></td>
+            </tr>
+            <tr class="comp" id="comp">
+              <th scope="row"><button class="btn btn-link">Task 2</button></th>
+              <td class="total">N/A</td>
+              <td class="remaining">N/A</td>
+              <td><span class="done">N/A</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <form id="chooseDatabase" class="collapse">
+        <input style="display:none;" id="dbFile" type="file" />
+        <button type="submit" class="btn btn-primary btn-large">Choose database file</button>
+      </form>
+      <form id="loginForm" class="collapse">
+        <p>Sign in with your registered email address and the password that was sent to this address.</p>
+        <div class="form-group">
+          <label for="raterEmail">Email address</label>
+          <input class="form-control" id="raterEmail" aria-describedby="emailHelp" placeholder="Enter email" type="email">
+          <small id="emailHelp" class="form-text text-muted">Your email address at which you received the password.</small>
+        </div>
+        <div class="form-group">
+          <label for="raterPassword">Password</label>
+          <input class="form-control" id="raterPassword" placeholder="Password" type="password">
+        </div>
+        <button type="submit" class="btn btn-primary">Sign in</button>
+      </form>
+      <script>
+        $('#chooseDatabase').submit(function(event) {
+          chooseDatabase('#dbFile');
+          event.preventDefault();
+        });
+        $('#loginForm').submit(function(event) {
+          var email = $('#raterEmail').val();
+          var password = $('#raterPassword').val();
+          global.db.get("SELECT * FROM Raters WHERE Email='" + email + "' AND Password='" + password + "'", setRaterId);
+          event.preventDefault();
+        });
+      </script>
+    </template>
+
+    <!-- Surface evaluation page -->
+    <template id="evalTemplate">
+      <div class="eval collapse" id="eval">
+        <div class="top-notice row">
+          <div class="col-sm-6">
+            Please rate this result by pressing a button below <mark>within 10 sec</mark>.
+          </div>
+          <div class="col-sm-6 text-xs-right" id="progress">
+            <strong><span class="remaining"></strong> remaining out of <span class="total"></span>, you've rated <span class="done"></span>!
+          </div>
+        </div>
+        <div id="screenshots">
+
+        </div>
+        <div id="scores" class="btn-toolbar score-toolbar">
+          <button id="score-1" type="button" class="btn btn-danger">Bad</button>
+          <button id="score-2" type="button" class="btn btn-warning">Poor</button>
+          <button id="score-3" type="button" class="btn btn-info">Fair</button>
+          <button id="score-4" type="button" class="btn btn-primary">Good</button>
+          <button id="score-5" type="button" class="btn btn-success">Excellent</button>
+        </div>
+      </div>
+    </template>
+
+    <template id="screenshotTemplate">
+      <div class="col-sm-4">
+        <div class="thumbnail">
+          <img style="width:100%" />
+          <div class="caption center-caption">
+            <p></p>
+          </div>
+        </div>
+      </div> 
+    </template>
+
+    <!-- Surface comparison page -->
+    <template id="compTemplate">
+      
+    </template>
+
+    <template id="orthoViews">
+       <div class="row">
+         <div class="col-sm-4">
+           <div class="thumbnail">
+             <img src="/w3images/lights.jpg" alt="axial" style="width:100%" id="axialView">
+             <div class="caption">
+               <p class="center-caption">Axial view</p>
+             </div>
+           </div>
+         </div>
+         <div class="col-sm-4">
+           <div class="thumbnail">
+             <img src="/w3images/nature.jpg" alt="coronal" style="width:100%" id="coronalView">
+             <div class="caption">
+               <p class="center-caption">Coronal view</p>
+             </div>
+           </div>
+         </div>
+         <div class="col-sm-4">
+           <div class="thumbnail">
+             <img src="/w3images/fjords.jpg" alt="sagittal" style="width:100%" id="sagittalView">
+             <div class="caption">
+               <p class="center-caption">Sagittal view</p>
+             </div>
+           </div>
+         </div>
+      </div>
+    </template>
+
+    <!-- Scripts -->
+    <script src="../node_modules/jquery/dist/jquery.min.js"></script>
+    <script src="../node_modules/tether/dist/js/tether.min.js"></script>
+    <script src="../node_modules/bootstrap/dist/js/bootstrap.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

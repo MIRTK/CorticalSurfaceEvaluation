@@ -1,0 +1,17 @@
+.top-notice {
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+.score-toolbar {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.score-toolbar button {
+    width: 10% !important;
+}
+
+.center-caption {
+    text-align: center !important;
+}

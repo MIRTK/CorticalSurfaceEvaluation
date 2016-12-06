@@ -1,0 +1,26 @@
+{
+  "name": "cortical-surface-evaluation",
+  "version": "0.0.0",
+  "description": "Web application for evaluation of reconstructed neonatal cortical surfaces",
+  "main": "app/index.html",
+  "author": "Andreas Schuh",
+  "license": "BSD-2-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/schuhschuh/CorticalSurfaceEval.git"
+  },
+  "bugs": {
+    "url": "https://github.com/schuhschuh/CorticalSurfaceEval/issues"
+  },
+  "homepage": "https://github.com/schuhschuh/CorticalSurfaceEval#readme",
+  "scripts": {
+    "start": "nw"
+  },
+  "window": {
+    "title": "Cortical Surface Evaluation",
+    "min_width": 800,
+    "min_height": 800,
+    "toolbar": true
+  },
+  "chromium-args": "--enable-logging=stderr"
+}
