@@ -42,8 +42,8 @@ npm install -g nw nw-gyp nw-builder
 ### Dependencies
 
 Required dependencies are
-- [jQuery](https://jquery.com/
-= [Tether](http://tether.io/) (required by Bootstrap 4)
+- [jQuery](https://jquery.com/)
+- [Tether](http://tether.io/) (required by Bootstrap 4)
 - [Bootstrap 4](https://v4-alpha.getbootstrap.com/)
 - [node-sqlite3](https://github.com/mapbox/node-sqlite3)
 
