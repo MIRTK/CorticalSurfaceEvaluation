@@ -1,0 +1,19 @@
+{
+  "title": "Cortical Surface Evaluation",
+  "icon": "CorticalSurfaceEvaluation.app/Contents/Resources/app.icns",
+  "icon-size": 80,
+  "window": {
+    "position": {
+      "x": 200,
+      "y": 200
+    },
+    "size": {
+      "width": 600,
+      "height": 150
+    }
+  },
+  "contents": [
+    { "x": 192, "y": 100, "type": "file", "path": "CorticalSurfaceEvaluation.app" },
+    { "x": 448, "y": 100, "type": "link", "path": "/Applications" }
+  ]
+}
