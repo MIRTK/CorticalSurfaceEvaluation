@@ -5,10 +5,36 @@
 import os
 import sqlite3
 import argparse
+import random
 
 from vtk import vtkNIFTIImageReader, vtkMatrixToLinearTransform, vtkXMLPolyDataReader
 from mirtk.rendering.screenshots import (take_orthogonal_screenshots, range_to_level_window,
                                          nearest_voxel, point_to_index)
+
+
+def rgb(r, g, b):
+    return (float(r) / 255., float(g) / 255., float(b) / 255.)
+
+
+# Color should be neutral and not relate to colors for scoring buttons.
+color_of_single_contour_overlay = rgb(255, 245, 61)
+
+# Colors must be distinct enough so that any pair of two colors can be
+# selected randomly and the two overlays can still be easily distinguished.
+#
+# This list is randomly shuffled in the for loop of the main function in place
+# and the first two colors are used for the two different contours.
+colors = [
+    rgb(61, 216, 255),  # light blue
+    rgb(39, 0, 194),    # dark blue
+    rgb(135, 255, 61),  # light green
+    rgb(0, 194, 120),   # dark green
+    rgb(255, 193, 61),  # orange
+    rgb(255, 61, 242),  # pink
+    rgb(247, 32, 57)    # red
+]
+
+line_width = 4
 
 
 def get_scan_id(db, subject_id, session_id):
@@ -157,16 +183,17 @@ if __name__ == '__main__':
             else:
                 polydata = [initial_mesh]
                 overlays = [initial_mesh_id]
-                colors = [(0, 0, 1)]
                 take_orthogonal_screenshots(image, qform=qform, prefix=prefix, suffix=suffix,
                                             center=roi_center, length=roi_size, size=args.size,
-                                            polydata=polydata, colors=colors, level_window=level_window)
+                                            polydata=polydata, colors=[color_of_single_contour_overlay],
+                                            line_width=line_width, level_window=level_window)
                 if args.verbose > 0:
                     print("Saved orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with initial surface contours")
                     if args.verbose > 1:
                         print("\tPrefix = " + prefix)
-                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix, overlays=overlays, colors=colors)
+                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix,
+                                   overlays=overlays, colors=[color_of_single_contour_overlay])
         # screenshots with white matter surface overlay
         if white_mesh:
             prefix = roi_prefix + '_image_with_white_matter_surface'
@@ -176,18 +203,20 @@ if __name__ == '__main__':
             else:
                 polydata = [white_mesh]
                 overlays = [white_mesh_id]
-                colors = [(0, 0, 1)]
                 take_orthogonal_screenshots(image, qform=qform, prefix=prefix, suffix=suffix,
                                             center=roi_center, length=roi_size, size=args.size,
-                                            polydata=polydata, colors=colors, level_window=level_window)
+                                            polydata=polydata, colors=[color_of_single_contour_overlay],
+                                            line_width=line_width, level_window=level_window)
                 if args.verbose > 0:
                     print("Saved orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with white matter surface contours")
                     if args.verbose > 1:
                         print("\tPrefix = " + prefix)
-                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix, overlays=overlays, colors=colors)
+                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix,
+                                   overlays=overlays, colors=[color_of_single_contour_overlay])
         # screenshots with both initial and white matter surfaces overlayed
         if initial_mesh and white_mesh:
+            random.shuffle(colors)
             prefix = roi_prefix + '_image_with_initial_and_white_matter_surface'
             if any_screenshot_exists(prefix, suffix):
                 if args.verbose > 0:
@@ -195,16 +224,17 @@ if __name__ == '__main__':
             else:
                 polydata = [initial_mesh, white_mesh]
                 overlays = [initial_mesh_id, white_mesh_id]
-                colors = [(1, 0, 0), (0, 1, 0)]
                 take_orthogonal_screenshots(image, qform=qform, prefix=prefix, suffix=suffix,
                                             center=roi_center, length=roi_size, size=args.size,
-                                            polydata=polydata, colors=colors, level_window=level_window)
+                                            polydata=polydata, colors=colors, line_width=line_width,
+                                            level_window=level_window)
                 if args.verbose > 0:
                     print("Saved orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with initial and white matter surface contours")
                     if args.verbose > 1:
                         print("\tPrefix = " + prefix)
-                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix, overlays=overlays, colors=colors)
+                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix,
+                                   overlays=overlays, colors=colors)
 
     con.commit()
     cur.close()

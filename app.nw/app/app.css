@@ -3,15 +3,32 @@
     margin-bottom: 20px;
 }
 
-.score-toolbar {
+.score-toolbar, .ternary-choice-toolbar {
     margin-top: 20px;
     text-align: center;
 }
 
-.score-toolbar button {
-    width: 10% !important;
+.score-toolbar button, .ternary-choice-toolbar button {
+    width: 10%;
+    min-width: 100px;
 }
 
 .center-caption {
-    text-align: center !important;
+    text-align: center;
+}
+
+.borderless td, .borderless th {
+    border: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin-bottom: 10px;
+}
+
+h1, h2 {
+    margin-top: 30px;
+}
+
+h3, h4 {
+    margin-top: 20px;
 }

@@ -1,16 +1,43 @@
 var path = require('path');
 var sql = require('sqlite3');
 
+var startPage = "open";
+var contactName = "Andreas Schuh";
+var contactMailTo = "mailto:andreas.schuh@imperial.ac.uk?subject=Neonatal cortex evaluation"
+
 global.initial_mesh_id = 3;
 global.white_mesh_id = 4;
 
+global.dbFile = null;
+global.imgBase = null;
 global.evalSetId = 0;
 global.raterId = 0;
 global.overlayId = 0;
-global.imgBase = null;
+
+// The following array is randomly shuffled in place by updateCompPage
+// It is used to assign an overlay to one of the two choices (excl. "Neither").
+global.compOverlayIds = [global.initial_mesh_id, global.white_mesh_id]
+
 
 // ----------------------------------------------------------------------------
 // Common auxiliary functions
+
+/**
+ * Randomize array element order in-place.
+ * Using Durstenfeld shuffle algorithm.
+ *
+ * http://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array
+ */
+function shuffle(array) {
+    for (var i = array.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var temp = array[i];
+        array[i] = array[j];
+        array[j] = temp;
+    }
+    return array;
+}
+
 var entityMap = {
   "&": "&amp;",
   "<": "&lt;",
@@ -56,7 +83,8 @@ function clearErrors() {
 
 function changeNavLink(name) {
   $(".navbar>.nav>.nav-link.active").removeClass("active");
-  $("#nav-" + name).addClass("active");
+  var link = $(".navbar #nav-" + name);
+  if (link.length === 1) link.addClass("active");
 }
 
 function changeTemplate(name) {
@@ -77,83 +105,74 @@ function hideActivePage() {
   $('#container').hide();
 }
 
-function showHelpPage() {
-  $('#container').hide();
-  changeNavLink("help");
-  changeTemplate("help");
-  $('#container').show();
-  return false;
+function updatePage(name) {
+  if (name === "help") {
+    $("#help-scores button").click(function (event) {
+      var parts = this.id.split('-');
+      var score = parts[parts.length-1];
+      var title = "You're score is " + score + "!";
+      var msg = "Note that this dialog won't be shown during the evaluation."
+              + " It is stored in the database instead.";
+      alert(title + "\n\n" + msg);
+    });
+  } else if (name === "open") {
+    updateOpenPage();
+  } else if (name === "eval") {
+    updateEvalPage();
+  } else if (name === "comp") {
+    updateCompPage();
+  }
 }
 
-function showOpenPage() {
+function showPage(name) {
   $('#container').hide();
-  changeNavLink("open");
-  changeTemplate("open");
-  updateOpenPage();
+  changeNavLink(name);
+  changeTemplate(name);
+  updatePage(name);
   $('#container').show();
-  return false;
 }
 
-function showEvalPage() {
-  $('#container').hide();
-  changeTemplate("eval");
-  updateEvalPage();
-  $('#container').show();
-  return false;
-}
-
-function showCompPage() {
-  $('#container').hide();
-  changeTemplate("comp");
-  updateCompPage();
-  $('#container').show();
-  return false;
-}
-
-function enableNavLink(name, callback) {
+function enableNavLink(name) {
   $("#nav-" + name).removeClass("disabled");
-  $('.navbar').on('click', '#nav-' + name, callback);
+  $('.navbar').off('click', '#nav-' + name).on('click', '#nav-' + name, function (event) {
+    showPage(name);
+    return false;
+  });
 }
 
-function disableNavLink(name, callback) {
-  $('.navbar').off('click', '#nav-' + name, callback);
+function disableNavLink(name) {
+  $('.navbar').off('click', '#nav-' + name);
   $("#nav-" + name).addClass("disabled");
 }
 
 function enableTask(name) {
   var selector = '#' + name;
   $(selector + " .btn").removeClass("disabled");
-  $(selector).on('click', '.btn', showEvalPage);
+  $(selector).off('click', '.btn').on('click', '.btn', function (event) {
+    showPage(name);
+    return false;
+  });
 }
 
 function disableTask(name) {
   var selector = '#' + name;
-  $(selector).off('click', '.btn', showEvalPage);
+  $(selector).off('click', '.btn');
   $(selector + " .btn").addClass("disabled");
 }
 
 function enablePage(name) {
-  if (name === 'help') {
-    enableNavLink(name, showHelpPage);
-  } else if (name === 'open') {
-    enableNavLink(name, showOpenPage);
-  } else if (name === 'eval') {
-    enableTask(name, showEvalPage);
-  } else if (name === 'comp') {
-    return; // TODO
-    enableTask(name, showCompPage);
+  if (name === 'help' || name === 'open') {
+    enableNavLink(name);
+  } else {
+    enableTask(name);
   }
 }
 
 function disablePage(name) {
-  if (name === 'help') {
-    disableNavLink(name, showHelpPage);
-  } else if (name === 'open') {
-    disableNavLink(name, showOpenPage);
-  } else if (name === 'eval') {
-    disableTask(name, showEvalPage);
-  } else if (name === 'comp') {
-    disableTask(name, showCompPage);
+  if (name === 'help' || name == 'open') {
+    disableNavLink(name);
+  } else {
+    disableTask(name);
   }
 }
 
@@ -169,10 +188,41 @@ if (supportsTemplate()) {
     enablePage("open");
     disablePage("eval");
     disablePage("comp");
-    showHelpPage();
+    showPage(startPage);
   });
 } else {
   showErrorMessage("template HTML tag not supported");
+}
+
+// ----------------------------------------------------------------------------
+// Auxiliaries for all task pages
+function appendScreenshot(err, row) {
+  if (err) {
+    showErrorMessage(err);
+  } else {
+    var div = $("#screenshots>.row").last();
+    if (div.length === 0 || div.children("div").length === 3) {
+      div = $("<div class='row'></div>").appendTo("#screenshots");
+    }
+    var template = document.querySelector('#screenshotTemplate').content;
+    var clone = document.importNode(template, true);
+    var img = $(clone).find('img');
+    img.attr('src', 'file://' + path.join(global.imgBase, row['FileName']));
+    img.attr('alt', "Screenshot " + row['ScreenshotId']);
+    div.append(clone);
+  }
+}
+
+function clearScreenshots() {
+  $("#screenshots").empty();
+}
+
+function showDoneMessage() {
+  var alerts = $('#alerts');
+  if (alerts.children('.alert-success').length === 0) {
+    showSuccess(`<strong>Congratulation!</strong> You've completed this task.
+                <br />Thank you for rating these results.`);
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -226,6 +276,52 @@ function queryRemainingNumberOfEvaluationSets() {
   `, setRemainingNumberOfEvaluationSets);
 }
 
+function queryTotalNumberOfComparisonSets() {
+  global.db.get(`
+    SELECT COUNT(DISTINCT A.EvaluationSetId) AS NumTotal FROM EvaluationSets AS A
+    INNER JOIN ScreenshotOverlays AS B
+    ON A.ScreenshotId = B.ScreenshotId
+      AND B.OverlayId IN (` + global.initial_mesh_id + ', ' + global.white_mesh_id + `)
+      AND A.EvaluationSetId NOT IN (
+        SELECT EvaluationSetId FROM EvaluationSets AS C
+        INNER JOIN ScreenshotOverlays AS D
+        ON C.ScreenshotId = D.ScreenshotId
+        AND D.OverlayId NOT IN (` + global.initial_mesh_id + ', ' + global.white_mesh_id + `)
+      )
+      AND A.EvaluationSetId NOT IN (
+        SELECT EvaluationSetId FROM EvaluationSets AS E
+        INNER JOIN ScreenshotOverlays AS F
+        ON E.ScreenshotId = F.ScreenshotId
+        GROUP BY EvaluationSetId
+        HAVING COUNT(DISTINCT OverlayId) <> 2
+      )
+  `, setTotalNumberOfComparisonSets);
+}
+
+function queryRemainingNumberOfComparisonSets() {
+  global.db.get(`
+    SELECT COUNT(DISTINCT(A.EvaluationSetId)) AS NumRemaining FROM EvaluationSets AS A
+    LEFT JOIN WhiteMatterSurfaceComparison AS S
+      ON S.EvaluationSetId = A.EvaluationSetId
+    INNER JOIN ScreenshotOverlays AS B
+      ON A.ScreenshotId = B.ScreenshotId
+      AND S.BestOverlayId IS NULL
+      AND A.EvaluationSetId NOT IN (
+        SELECT EvaluationSetId FROM EvaluationSets AS C
+        INNER JOIN ScreenshotOverlays AS D
+          ON C.ScreenshotId = D.ScreenshotId
+          AND D.OverlayId NOT IN (` + global.initial_mesh_id + ', ' + global.white_mesh_id + `)
+      )
+      AND A.EvaluationSetId NOT IN (
+        SELECT EvaluationSetId FROM EvaluationSets AS E
+        INNER JOIN ScreenshotOverlays AS F
+        ON E.ScreenshotId = F.ScreenshotId
+        GROUP BY EvaluationSetId
+        HAVING COUNT(DISTINCT OverlayId) <> 2
+      )
+  `, setRemainingNumberOfComparisonSets);
+}
+
 function setTotalNumberOfEvaluationSets(err, res) {
   if (err) {
     showErrorMessage(err);
@@ -241,6 +337,24 @@ function setRemainingNumberOfEvaluationSets(err, res) {
   } else {
     $(".eval .remaining").text(res['NumRemaining'].toString());
     updatePercentageOfEvaluationSetsDone();
+  }
+}
+
+function setTotalNumberOfComparisonSets(err, res) {
+  if (err) {
+    showErrorMessage(err);
+  } else {
+    $(".comp .total").text(res['NumTotal'].toString());
+    updatePercentageOfComparisonSetsDone();
+  }
+}
+
+function setRemainingNumberOfComparisonSets(err, res) {
+  if (err) {
+    showErrorMessage(err);
+  } else {
+    $(".comp .remaining").text(res['NumRemaining'].toString());
+    updatePercentageOfComparisonSetsDone();
   }
 }
 
@@ -260,6 +374,22 @@ function updatePercentageOfEvaluationSetsDone() {
   }
 }
 
+function updatePercentageOfComparisonSetsDone() {
+  var m_text = $(".comp .remaining").text();
+  var n_text = $(".comp .total").text();
+  if (m_text && n_text) {
+    var m = parseInt($(".comp .remaining").text());
+    var n = parseInt($(".comp .total").text());
+    var v = (100 - m/n * 100).toFixed(0) + '%';
+    if (v === '100%' && $('#nav-open').hasClass('active')) {
+      v = 'Completed!';
+    }
+    $(".comp .done").text(v);
+  } else {
+    $(".comp .done").text('0%');
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Open database
 function chooseDatabase(input) {
@@ -272,12 +402,12 @@ function chooseDatabase(input) {
 }
 
 function openDatabase(db_file) {
+  global.dbFile = db_file;
   global.imgBase = path.dirname(db_file);
   global.db = new sql.Database(db_file, function (err) {
     if (err) {
       showErrorMessage(err);
     } else {
-      $("#chooseDatabase").hide();
       $("#loginForm").show();
     }
   });
@@ -290,24 +420,38 @@ function clearPasswordField() {
 function updateSummary() {
   queryTotalNumberOfEvaluationSets();
   queryRemainingNumberOfEvaluationSets();
+  queryTotalNumberOfComparisonSets();
+  queryRemainingNumberOfComparisonSets();
   $("#summary").show();
 }
 
+function getMailToLink() {
+  if (global.dbFile) {
+    return contactMailTo + "&body=PLEASE ATTACH FILE: " + global.dbFile;
+  } else {
+    return contactMailTo;
+  }
+}
+
 function updateOpenPage() {
+  $('.contact').text(contactName);
+  if (global.dbFile) {
+    $('#mail').attr('href', getMailToLink());
+    $('#mail').removeClass('disabled');
+  } else {
+    $('#mail').removeAttr('href');
+    $('#mail').addClass('disabled');
+  }
   if (global.raterId > 0) {
     enablePage("eval");
     enablePage("comp");
     $("#loginForm").hide();
-    $("#chooseDatabase>button.btn-primary").html("Choose a different database file");
-    $("#chooseDatabase").show();
     updateSummary();
   } else {
     disablePage("eval");
     disablePage("comp");
     $("#summary").hide();
     $("#loginForm").hide();
-    $("#chooseDatabase>button.btn-primary").html("Choose a database file");
-    $("#chooseDatabase").show();
   }
 }
 
@@ -331,7 +475,6 @@ function setRaterId(err, row) {
 
 // ----------------------------------------------------------------------------
 // Evaluation of single surface
-
 function getEvalTableName(overlayId) {
   var overlay = global.overlayId;
   if (overlayId) {
@@ -346,55 +489,7 @@ function getEvalTableName(overlayId) {
   }
 }
 
-function clearScreenshots() {
-  $("#screenshots").empty();
-}
-
-function disableEvalScoreToolbar() {
-  $("#scores button").addClass('disabled');
-  $("#scores button").off('click');
-}
-
-function hideEvalScoreToolbar() {
-  $("#scores button").addClass('disabled');
-  $("#scores button").off('click');
-  $('#scores').hide();
-}
-
-function onEvalPageReady() {
-  $("#scores button").click(function (event) {
-    var table = getEvalTableName();
-    var score = parseInt(this.id.split('-')[1]);
-    global.db.run(`INSERT INTO ` + table + ` (EvaluationSetId, RaterId, PerceptualScore) VALUES ($set, $rater, $score)`,
-      {
-        $set: global.evalSetId,
-        $rater: global.raterId,
-        $score: score
-      }, updateEvalPage);
-    event.preventDefault();
-  });
-  $("#scores button.disabled").removeClass('disabled');
-  $("#eval").show();
-}
-
-function appendScreenshot(err, row) {
-  if (err) {
-    showErrorMessage(err);
-  } else {
-    var div = $("#screenshots>.row").last();
-    if (div.length === 0 || div.children("div").length === 3) {
-      div = $("<div class='row'></div>").appendTo("#screenshots");
-    }
-    var template = document.querySelector('#screenshotTemplate').content;
-    var clone = document.importNode(template, true);
-    var img = $(clone).find('img');
-    img.attr('src', 'file://' + path.join(global.imgBase, row['FileName']));
-    img.attr('alt', "Screenshot " + row['ScreenshotId']);
-    div.append(clone);
-  }
-}
-
-function queryRemainingOverlaps() {
+function queryRemainingOverlays() {
   global.db.all(`
     SELECT DISTINCT(B.OverlayId)
     FROM EvaluationSets AS A
@@ -426,16 +521,11 @@ function queryNextEvaluationSet(err, rows) {
   if (err) {
     showErrorMessage(err);
   } else if (rows.length === 0) {
-    hideEvalScoreToolbar();
     hideActivePage();
-    var alerts = $('#alerts');
-    if (alerts.children('.alert-success').length === 0) {
-      showSuccess("<strong>Congratulation!</strong> You've completed this task.<br />" +
-                  "Thanks for rating these images. Please continue with the next task.");
-    }
+    showDoneMessage();
   } else {
     global.overlayId = rows[Math.floor(Math.random() * rows.length)]['OverlayId'];
-    global.db.get(`
+    global.db.all(`
       SELECT A.EvaluationSetId AS NextSetId FROM EvaluationSets AS A
       LEFT JOIN ` + getEvalTableName() + ` AS S
         ON S.EvaluationSetId = A.EvaluationSetId
@@ -455,27 +545,142 @@ function queryNextEvaluationSet(err, rows) {
           GROUP BY EvaluationSetId
           HAVING COUNT(DISTINCT OverlayId) <> 1
         )
+      GROUP BY A.EvaluationSetId
     `, showNextEvaluationSet);
   }
 }
 
-function showNextEvaluationSet(err, row) {
+function showNextEvaluationSet(err, rows) {
   if (err) {
     showErrorMessage(err);
+  } else if (rows.length === 0) {
+    hideActivePage();
+    showDoneMessage();
   } else {
-    disableEvalScoreToolbar();
     clearScreenshots();
-    global.evalSetId = row['NextSetId'];
+    global.evalSetId = rows[Math.floor(Math.random() * rows.length)]['NextSetId'];
     global.db.each(`
       SELECT A.ScreenshotId, A.ViewId, A.FileName FROM Screenshots AS A
       INNER JOIN EvaluationSets AS B ON A.ScreenshotId = B.ScreenshotId AND B.EvaluationSetId = ?
-    `, row['NextSetId'], appendScreenshot, onEvalPageReady);
+    `, global.evalSetId, appendScreenshot, onEvalPageReady);
   }
+}
+
+function onEvalPageReady() {
+  $("#scores button").off('click').click(function (event) {
+    var table = getEvalTableName();
+    var score = parseInt(this.id.split('-')[1]);
+    global.db.run(`INSERT INTO ` + table + ` (EvaluationSetId, RaterId, PerceptualScore) VALUES ($set, $rater, $score)`,
+      {
+        $set: global.evalSetId,
+        $rater: global.raterId,
+        $score: score
+      }, updateEvalPage);
+    event.preventDefault();
+  });
+  $("#eval").show();
 }
 
 function updateEvalPage() {
   $("#eval").hide();
   queryTotalNumberOfEvaluationSets();
   queryRemainingNumberOfEvaluationSets();
-  queryRemainingOverlaps();
+  queryRemainingOverlays();
+  $("#eval").show();
+}
+
+// ----------------------------------------------------------------------------
+// Comparison of two surfaces
+function queryNextComparisonSet() {
+  global.db.get(`
+    SELECT A.EvaluationSetId AS NextSetId FROM EvaluationSets AS A
+    LEFT JOIN WhiteMatterSurfaceComparison AS S
+      ON S.EvaluationSetId = A.EvaluationSetId
+    INNER JOIN ScreenshotOverlays AS B
+      ON A.ScreenshotId = B.ScreenshotId
+      AND S.BestOverlayId IS NULL
+      AND A.EvaluationSetId NOT IN (
+        SELECT EvaluationSetId FROM EvaluationSets AS C
+        INNER JOIN ScreenshotOverlays AS D
+          ON C.ScreenshotId = D.ScreenshotId
+          AND D.OverlayId NOT IN (` + global.initial_mesh_id + ", " + global.white_mesh_id + `)
+      )
+      AND A.EvaluationSetId NOT IN (
+        SELECT EvaluationSetId FROM EvaluationSets AS E
+        INNER JOIN ScreenshotOverlays AS F
+        ON E.ScreenshotId = F.ScreenshotId
+        GROUP BY EvaluationSetId
+        HAVING COUNT(DISTINCT OverlayId) <> 2
+      )
+    GROUP BY A.EvaluationSetId
+  `, showNextComparisonSet);
+}
+
+function showNextComparisonSet(err, row) {
+  if (err) {
+    showErrorMessage(err);
+  } else if (row) {
+    clearScreenshots();
+    global.compSetId = row['NextSetId'];
+    global.db.each(`
+      SELECT A.ScreenshotId, A.ViewId, A.FileName FROM Screenshots AS A
+      INNER JOIN EvaluationSets AS B ON A.ScreenshotId = B.ScreenshotId AND B.EvaluationSetId = ?
+    `, row['NextSetId'], appendScreenshotAndChangeButtonColors, onCompPageReady);
+  } else {
+    hideActivePage();
+    showDoneMessage();
+  }
+}
+
+function appendScreenshotAndChangeButtonColors(err, row) {
+  if (err) {
+    showErrorMessage(err);
+  } else {
+    appendScreenshot(err, row);
+    for (let i = 0; i < 2; i++) {
+      global.db.get(`
+        SELECT Color FROM ScreenshotOverlays
+        WHERE ScreenshotId = ? AND OverlayId = ?`,
+        row['ScreenshotId'], global.compOverlayIds[i],
+        function (err, row) {
+          if (err) {
+            showErrorMessage(err);
+          } else {
+            var btn = $("#choice-" + i);
+            btn.css('background-color', row['Color']);
+          }
+        }
+      );
+    }
+  }
+}
+
+function onCompPageReady() {
+  $("#choice button").off('click').click(function (event) {
+    var parts = this.id.split('-');
+    var choice = parseInt(parts[parts.length-1]);
+    var best = 0;
+    if (choice === 2) {
+      best = 1;
+    } else {
+      best = global.compOverlayIds[choice];
+    }
+    global.db.run(`INSERT INTO WhiteMatterSurfaceComparison (EvaluationSetId, RaterId, BestOverlayId) VALUES ($set, $rater, $best)`,
+      {
+        $set: global.compSetId,
+        $rater: global.raterId,
+        $best: best
+      }, updateCompPage);
+    event.preventDefault();
+    return false;
+  });
+  $("#comp").show();
+}
+
+function updateCompPage() {
+  global.compOverlayIds = shuffle(global.compOverlayIds);
+  $("#comp").hide();
+  queryTotalNumberOfComparisonSets();
+  queryRemainingNumberOfComparisonSets();
+  queryNextComparisonSet();
 }

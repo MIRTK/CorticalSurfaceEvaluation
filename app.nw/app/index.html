@@ -7,40 +7,20 @@
     <link href="app.css" rel="stylesheet">
   </head>
   <body data-feedly-mini="yes">
-    <!-- Navigation -->
     <nav class="navbar navbar-dark bg-inverse">
       <div class="nav navbar-nav">
-        <a class="nav-item nav-link active" href="#" id="nav-help">Help</a>
-        <a class="nav-item nav-link" href="#" id="nav-open">Tasks</a>
+        <a class="nav-item nav-link" href="#" id="nav-help">Help</a>
+        <a class="nav-item nav-link active" href="#" id="nav-open">Tasks</a>
       </div>
     </nav>
-
-    <!-- Placeholder for error messages -->
     <div id="alerts">
 
     </div>
-
-    <template id="errorTemplate">
-      <div class="alert alert-danger alert-dismissible fade in" role="alert" id="msgBox">
-        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-          <span aria-hidden="true">&times;</span>
-        </button>
-        <p id="msg"></p>
-      </div>
-    </template>
-
-    <template id="successTemplate">
-      <div class="alert alert-success" role="alert" id="msgBox">
-        <p id="msg"></p>
-      </div>
-    </template>
-
-    <!-- Placeholder for individual pages -->
     <div class="container theme-showcase" role="main" id="container">
       
     </div>
 
-    <!-- Help page -->
+    <!-- Template: Help page -->
     <template id="helpTemplate">
       <div class="jumbotron">
         <h1>Cortical Surface Evaluation</h1>
@@ -48,78 +28,122 @@
           App for manual evaluation of the automatically reconstructed cortical surfaces.
         </p>
       </div>
-      <h2>Thank you!</h2>
+      <h4>Thank you!</h4>
       <p>
-        Thanks for volunteering to visually rate the quality of the automatically reconstructed cortical surfaces!
+        Thanks for volunteering to evaluate the reconstructed surfaces!
       </p>
       <p>
         Please use this application to record your scores in the provided database file which you find in the
-        top-level directory of the archive that also contained this application, named <mark>recon-neonatal-cortex.db</mark>.
-        The different evaluation tasks are detailed below together with instructions on how to use this application
-        to complete the respective task. Note that your scores are recorded in the database immediately once
-        submitted. You can take a break at any point, keep the application window open in the background,
-        or close it and re-open it again at a later time.
+        top-level directory of the archive that also contained this application. The file has a <code>.db</code>
+        extension and should be named <mark>recon-neonatal-cortex.db</mark>.
       </p>
-      <h2>Task 1</h2>
       <p>
-        The first evaluation task is to rate the accuracy with which a given reconstructed surface delineates the
-        true boundary between white matter and cortical grey matter. For each brain scan, you will be presented with
-        a varying number of screenshots taken from small regions of interest (ROIs) that have been pre-selected either
+        There are two evaluation tasks detailed below. Note that your scores are recorded in the database
+        as soon as a button with your rating is pressed. You can take a break at any point, keep the
+        application window in the background, or close it and open again later.
+      </p>
+      <p>
+        Your progress is shown on the "Tasks" page and in the top right corner of each task.
+      </p>
+
+      <h4>Task 1: Rate quality of individual contours</h4>
+      <p>
+        The first task is to rate the accuracy with which a given reconstructed surface delineates the
+        true boundary between white matter and cortical grey matter. For each brain scan, you will be presented
+        with a number of screenshots taken from small regions of interest (ROIs) that have been pre-selected either
         based on quantitative criteria such as considerable disagreement between tissue segmentation and reconstructed
         surface or been chosen randomly. For each ROI, you are shown three orthogonal slices of the T2-weighted
         brain MR volume with the contour of the reconstructed surface cut by the corresponding image plane overlayed.
-        Your task is to assign one of five different scores by clicking one of the coloured buttons corresponding to
-        your rating of the quality by which the contour in the current ROI follows the tissue boundary:
-        <table class="table">
-          <thead class="thead-default">
-            <tr>
-              <th>Score</th>
-              <th>Accuracy</th>
-              <th>Assessment criteria</th>
-            </tr>
-          </thead>
+        Note that the surface contours may correspond to either the initial surface reconstructed from the
+        tissue segmentation alone, or the final reonstructed white matter surface. Which one is shown at a time
+        is chosen randomly and both contours are visualised in the same color. This is to avoid bias in the
+        evaluation towards either of the two surfaces.
+      </p>
+      <p>
+        Your task is to assign one of the scores listed below by clicking the corresponding button below the
+        screenshots. A brief description of the meaning of each score and when to assign it is given below.
+        <table class="table borderless" id="help-scores">
           <tbody>
             <tr>
-              <th scope="row">1</th>
-              <td class="btn btn-sm btn-block btn-danger">Bad</td>
-              <td>Contour appears to follow random, noisy, or other tissue edge far from target boundary</td>
+              <td><button class="btn btn-sm btn-block btn-danger" id="test-score-1">Bad</button></td>
+              <td>Contour follows random, noisy, or other tissue edge.</td>
             </tr>
             <tr>
-              <th scope="row">2</th>
-              <td class="btn btn-sm btn-block btn-warning">Poor</td>
-              <td>Contour substantially deviates from tissue boundary, at least in parts</td>
+              <td><button class="btn btn-sm btn-block btn-warning" id="test-score-2">Poor</button></td>
+              <td>Contour substantially deviates from tissue boundary.</td>
             </tr>
             <tr>
-              <th scope="row">3</th>
-              <td class="btn btn-sm btn-block btn-info">Fair</td>
-              <td>Contour close to tissue boundary, but for the most part not with sub-pixel accuracy</td>
+              <td><button class="btn btn-sm btn-block btn-info" id="test-score-3">Fair</button></td>
+              <td>Contour close, but mainly not within sub-pixel accuracy.</td>
             </tr>
             <tr>
-              <th scope="row">4</th>
-              <td class="btn btn-sm btn-block btn-primary">Good</td>
-              <td>Contour depicts tissue boundary for the most part with only minor irregularities</td>
+              <td><button class="btn btn-sm btn-block btn-primary" id="test-score-4">Good</button></td>
+              <td>Contour for the most part correct, but with minor irregularities.</td>
             </tr>
             <tr>
-              <th scope="row">5</th>
-              <td class="btn btn-sm btn-block btn-success">Excellent</td>
-              <td>Contour depicts tissue boundary within sub-pixel accuracy</td>
+              <td><button class="btn btn-sm btn-block btn-success" id="test-score-5">Excellent</button></td>
+              <td>Contour depicts tissue boundary within sub-pixel accuracy.</td>
             </tr>
           </tbody>
         </table>
+      <div class="card">
+        <div class="card-header" style="background-color: #ffffbb; border-color: #ffffbb;">
+          Note
+        </div>
+        <div class="card-block">
+          Contours of a surface intersected by an image slice may appear to not be
+          close to the tissue boundary in one view, but be nearer in a slice slightly above or below
+          the one shown. This is mainly the case where the direction of the gyrus goes out of plane
+          which sometimes can be seen from the intensity images. Where there is a clear tissue boundary
+          between white matter and cortical grey matter and the cortex has locally near constant
+          thickness, this is unlikely the case and the contour should be close to the tissue boundary.
+        </div>
+      </div>
+
+      <h4>Task 2: Which one is better?</h4>
+      <p>
+        In this task you are shown volume slice renders with both surfaces overlayed with different colors.
+        The task is to choose which of the two contours depicts the true tissue boundary seen in
+        the MR image better by pressing either the button labeled "A" or the button labeled "B",
+        depending on the color of the button which corresponds to the color of the contour in the
+        images that best depicts the tissue boundary.
+        When both surfaces either delineate the boundary perfectly well or contain comparable
+        errors, please choose the option "Neither".
       </p>
+      <div class="card">
+        <div class="card-header" style="background-color: #ffffbb; border-color: #ffffbb;">
+          Note
+        </div>
+        <div class="card-block">
+          The colors of the contours are picked randomly each time. Also the choice of "A" and "B",
+          respectively, is randomly assigned to either one of the two contours.
+          This is to avoid bias to always vote for choice "A" or "B", respectively.
+          Inspect the images carefully before making a choice.
+        </div>
+      </div>
     </template>
 
-    <!-- Open database page -->
+    <!-- Template: Open database and task overview -->
     <template id="openTemplate">
       <div class="jumbotron">
         <h1>Cortical Surface Evaluation</h1>
-        <p>
-          Select database file with details of evaluation tasks and already recorded scores.
-          You are then asked to enter your email address and assigned password, which is used
-          to link your scores with your rater profile. A summary of the number of ROIs
-          that have been rated by you and how many more to rate in order to complete each
-          evaluation task will be shown after the log in into the database.
-        </p>
+        <ol>
+          <li>
+            Read the instructions on the <a href="#" onclick="showPage('help');"">Help</a> page if this your first time.
+          </li>
+          <li>
+            <a href="#" onclick="chooseDatabase('#dbFile')">Open database</a> file with details of tasks and recorded scores.
+          </li>
+          <li>
+            Enter your email address and assigned password.
+          </li>
+          <li>
+            Click on a task link to continue rating the contours.
+          </li>
+          <li>
+            When task complete, <a id="mail" href="#">send database file</a> to <span class="contact"></span>.
+          </li>
+        </ol>
       </div>
       <div id="summary" class="collapse">
         <table class="table">
@@ -127,8 +151,8 @@
             <tr>
               <th>Task</th>
               <th>Total</th>
+              <th>To-Do</th>
               <th>Done</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -147,9 +171,8 @@
           </tbody>
         </table>
       </div>
-      <form id="chooseDatabase" class="collapse">
-        <input style="display:none;" id="dbFile" type="file" />
-        <button type="submit" class="btn btn-primary btn-large">Choose database file</button>
+      <form id="chooseDatabase" style="display:none;">
+        <input style="display:none;" id="dbFile" type="file" accept=".db" nwworkingdir="."/>
       </form>
       <form id="loginForm" class="collapse">
         <p>Sign in with your registered email address and the password that was sent to this address.</p>
@@ -165,10 +188,6 @@
         <button type="submit" class="btn btn-primary">Sign in</button>
       </form>
       <script>
-        $('#chooseDatabase').submit(function(event) {
-          chooseDatabase('#dbFile');
-          event.preventDefault();
-        });
         $('#loginForm').submit(function(event) {
           var email = $('#raterEmail').val();
           var password = $('#raterPassword').val();
@@ -178,15 +197,16 @@
       </script>
     </template>
 
-    <!-- Surface evaluation page -->
+    <!-- Template: Surface evaluation -->
     <template id="evalTemplate">
       <div class="eval collapse" id="eval">
         <div class="top-notice row">
           <div class="col-sm-6">
-            Please rate this result by pressing a button below <mark>within 10 sec</mark>.
+            Please rate this result <mark>within 10 sec</mark>.
           </div>
           <div class="col-sm-6 text-xs-right" id="progress">
-            <strong><span class="remaining"></strong> remaining out of <span class="total"></span>, you've rated <span class="done"></span>!
+            <strong><span class="remaining"></strong> remaining<span style="display: none"> out of <span class="total"></span></span>,
+            you've rated <span class="done"></span>!
           </div>
         </div>
         <div id="screenshots">
@@ -202,6 +222,44 @@
       </div>
     </template>
 
+    <!-- Template: Comparison of two surfaces -->
+    <template id="compTemplate">
+      <div class="comp collapse" id="comp">
+        <div class="top-notice row">
+          <div class="col-sm-6">
+            Please rate this result <mark>within 10 sec</mark>.
+          </div>
+          <div class="col-sm-6 text-xs-right" id="progress">
+            <strong><span class="remaining"></strong> remaining<span style="display: none"> out of <span class="total"></span></span>,
+            you've rated <span class="done"></span>!
+          </div>
+        </div>
+        <div id="screenshots">
+
+        </div>
+        <div id="choice" class="btn-toolbar ternary-choice-toolbar">
+          <button id="choice-0" type="button" class="btn">A</button>
+          <button id="choice-2" type="button" class="btn btn-default">Neither</button>
+          <button id="choice-1" type="button" class="btn">B</button>
+        </div>
+      </div>
+    </template>
+
+    <!-- Template: Miscellaneous -->
+    <template id="errorTemplate">
+      <div class="alert alert-danger alert-dismissible fade in" role="alert" id="msgBox">
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <p id="msg"></p>
+      </div>
+    </template>
+
+    <template id="successTemplate">
+      <div class="alert alert-success" role="alert" id="msgBox">
+        <p id="msg"></p>
+      </div>
+    </template>
     <template id="screenshotTemplate">
       <div class="col-sm-4">
         <div class="thumbnail">
@@ -211,40 +269,6 @@
           </div>
         </div>
       </div> 
-    </template>
-
-    <!-- Surface comparison page -->
-    <template id="compTemplate">
-      
-    </template>
-
-    <template id="orthoViews">
-       <div class="row">
-         <div class="col-sm-4">
-           <div class="thumbnail">
-             <img src="/w3images/lights.jpg" alt="axial" style="width:100%" id="axialView">
-             <div class="caption">
-               <p class="center-caption">Axial view</p>
-             </div>
-           </div>
-         </div>
-         <div class="col-sm-4">
-           <div class="thumbnail">
-             <img src="/w3images/nature.jpg" alt="coronal" style="width:100%" id="coronalView">
-             <div class="caption">
-               <p class="center-caption">Coronal view</p>
-             </div>
-           </div>
-         </div>
-         <div class="col-sm-4">
-           <div class="thumbnail">
-             <img src="/w3images/fjords.jpg" alt="sagittal" style="width:100%" id="sagittalView">
-             <div class="caption">
-               <p class="center-caption">Sagittal view</p>
-             </div>
-           </div>
-         </div>
-      </div>
     </template>
 
     <!-- Scripts -->
