@@ -2,7 +2,7 @@
   "name": "CorticalSurfaceEvaluation",
   "version": "1.0.0",
   "description": "App for evaluation of reconstructed neonatal cortical surfaces",
-  "main": "app/index.html",
+  "main": "index.html",
   "author": "Andreas Schuh",
   "license": "BSD-2-Clause",
   "repository": {
