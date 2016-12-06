@@ -75,7 +75,7 @@ mv osx64/CorticalSurfaceEvaluation/osx64/CorticalSurfaceEvaluation.app osx64/
 rm -rf osx64/CorticalSurfaceEvaluation
 cp app.nw/app.icns osx64/CorticalSurfaceEvaluation.app/Contents/Resources/app.icns
 cp app.nw/app.icns osx64/CorticalSurfaceEvaluation.app/Contents/Resources/document.icns
-cp app.nw/appdmg.json osx64/
-cd osx64 && appdmg appdmg.json CorticalSurfaceEvaluation.dmg
+cp app.nw/dmg.json osx64/
+cd osx64 && appdmg dmg.json CorticalSurfaceEvaluation.dmg
 rm -rf CorticalSurfaceEvaluation.app  # optional clean up
 ```
