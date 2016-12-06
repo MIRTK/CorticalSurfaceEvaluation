@@ -1,7 +1,7 @@
 Cortical Surface Evaluation
 ===========================
 
-App for manual evaluation of cortical surfaces automatically reconstructed
+App for manual evaluation of surfaces reconstructed
 using the [MIRTK](https://mirtk.github.io)
 [recon-neonatal-cortex](https://github.com/MIRTK/Deformable/blob/add-recon-neonatal-cortex/tools/recon-neonatal-cortex.py)
 command.
