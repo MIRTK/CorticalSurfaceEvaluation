@@ -15,7 +15,7 @@ This application uses NW.js and can be packaged for macOS with the following com
 ```
 brew install npm appdmg
 npm install -g nw-builder
-npm install nw
+npm install -g nw
 npm install jquery
 npm install bootstrap@4.0.0-alpha.5
 npm install sqlite3 --build-from-source --runtime=node-webkit --target_arch=x64 --target=0.19.0
