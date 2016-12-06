@@ -65,18 +65,58 @@ CREATE TABLE Overlays
 INSERT INTO Overlays (Name, Description)
 VALUES ('Neither',  'The invisible overlay, e.g., choose if neither real overlay is best');
 
--- Enumeration of image region selection criteria
-CREATE TABLE SelectionCriteria
+INSERT INTO Overlays (Name, Description)
+VALUES ('Segmentation boundary',  'The boundary of the white matter segmentation');
+
+INSERT INTO Overlays (Name, Description)
+VALUES ('Initial surface',  'The initial surface of spherical topology reconstructed using the white matter segmentation');
+
+INSERT INTO Overlays (Name, Description)
+VALUES ('White matter surface',  'The white matter surface obtained by deforming the initial surface mesh towards the image edges');
+
+-- Enumeration of perceptual quality scores
+CREATE TABLE PerceptualQuality
 (
-    CriteriumId INTEGER PRIMARY KEY AUTOINCREMENT,
-    Name VARCHAR(64) NOT NULL,
-    Description VARCHAR(255),
-    UNIQUE (Name)
+    Score INTEGER PRIMARY KEY,        -- Numeric score value, the higher the better
+    VerbalScore VARCHAR(20) NOT NULL, -- e.g., 'Poor', 'Fair', 'Good',...
+    Description VARCHAR(500),         -- Explanation of when to assign this score
+    UNIQUE (VerbalScore)
 );
+
+INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
+VALUES (1, 'Bad', 'Contour appears to follow random, noisy, or other tissue edge far from target boundary');
+
+INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
+VALUES (2, 'Poor', 'Contour substantially deviates from tissue boundary, at least in parts');
+
+INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
+VALUES (3, 'Fair', 'Contour close to tissue boundary, but for the most part not with sub-pixel accuracy');
+
+INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
+VALUES (4, 'Good', 'Contour depicts tissue boundary for the most part with only minor irregularities');
+
+INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
+VALUES (5, 'Excellent', 'Contour depicts tissue boundary within sub-pixel accuracy');
 
 ------------------------------------------------------------------------------
 --                             Data tables                                  --
 ------------------------------------------------------------------------------
+
+-- Table of (expert) raters
+--
+-- A unique email address is used for "login" at the web application with
+-- a generated password assigned to each rater. The password is stored in
+-- plain text and therefore cannot be changed by the user via the GUI.
+CREATE TABLE Raters
+(
+    RaterId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Email VARCHAR(64) NOT NULL,
+    Password CHAR(8) NOT NULL,
+    FirstName VARCHAR(64) NOT NULL,
+    LastName VARCHAR(64) NOT NULL,
+    Affiliation VARCHAR(255),
+    UNIQUE (Email)
+);
 
 -- Table which assigns unique Id to each unique pair of (SubjectId,SessionId)
 CREATE TABLE Scans
@@ -85,6 +125,18 @@ CREATE TABLE Scans
     SubjectId CHARACTER(11) NOT NULL,
     SessionId INTEGER NOT NULL,
     UNIQUE (SubjectId, SessionId)
+);
+
+-- Table of commands executed to select regions of interest
+--
+-- This table is in first place used to increase reproducibility and record
+-- the arguments of the commands used to add rows to the ROIs table.
+CREATE TABLE Commands
+(
+    CommandId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name VARCHAR(64) NOT NULL,
+    Parameters VARCHAR(255),
+    UNIQUE (Name, Parameters)
 );
 
 -- Table of image regions of interest to be rated
@@ -101,18 +153,9 @@ CREATE TABLE ROIs
     CenterY REAL NOT NULL,
     CenterZ REAL NOT NULL,
     Size REAL,
+    CommandId INTEGER,
     FOREIGN KEY (ScanId) REFERENCES Scans(ScanId)
-);
-
--- Table of selection criteria based on which image region was selected
---
--- This table is used to keep track of the cirteria based on which
--- an image region of interest has been selected for evaluation.
-CREATE TABLE ROISelectionCriteria
-(
-    ROI_Id INTEGER NOT NULL,
-    CriteriumId INTEGER NOT NULL,
-    PRIMARY KEY (ROI_Id, CriteriumId)
+    FOREIGN KEY (CommandId) REFERENCES Commands(CommandId)
 );
 
 -- Table of screenshots that have been pre-rendered to file
@@ -150,61 +193,59 @@ CREATE TABLE ScreenshotOverlays
     FOREIGN KEY (OverlayId) REFERENCES Overlays(OverlayId)
 );
 
+-- Table assigning screenshots to evaluation sets
+--
+-- An evaluation set consists of a set of screenshots that are
+-- presented to the rater in one view and based on which the
+-- rater assigns their score that summarizes the quality of
+-- the result given the different examples. Such evaluation
+-- set for example may consist of axial, coronal, and sagittal
+-- views of the same ROI showing the same overlays.
+CREATE TABLE EvaluationSets
+(
+    -- Columns
+    ScreenshotId INTEGER NOT NULL,
+    EvaluationSetId INTEGER NOT NULL,
+    -- A screenshot may be shown in a given form at most once
+    PRIMARY KEY (ScreenshotId, EvaluationSetId)
+);
+
 ------------------------------------------------------------------------------
 --                         Evaluation tables                                --
 ------------------------------------------------------------------------------
 
--- Table of (expert) raters
---
--- A unique email address is used for "login" at the web application.
--- No password or other authentication needed for this non-public app.
-CREATE TABLE Raters
+-- Table of initial white matter surface quality ratings
+CREATE TABLE InitialSurfaceScores
 (
-    RaterId INTEGER PRIMARY KEY AUTOINCREMENT,
-    Email VARCHAR(64) NOT NULL,
-    FirstName VARCHAR(64) NOT NULL,
-    LastName VARCHAR(64) NOT NULL,
-    Affiliation VARCHAR(255),
-    UNIQUE (Email)
+    EvaluationSetId INTEGER NOT NULL,
+    RaterId INTEGER NOT NULL,
+    PerceptualScore INTEGER,
+    PRIMARY KEY (EvaluationSetId, RaterId),
+    FOREIGN KEY (PerceptualScore) REFERENCES PerceptualQuality(Score)
 );
 
--- Table of allowed scores
-CREATE TABLE Scores
+-- Table of reconstructed white matter surface quality ratings
+CREATE TABLE WhiteMatterSurfaceScores
 (
-    Score INTEGER PRIMARY KEY, -- Numeric score value
-    VerbalScore VARCHAR(20),   -- e.g., 'Bad', 'Good',...
-    Description VARCHAR(500),  -- Explanation of when to assign this score
-    UNIQUE (VerbalScore)
-);
-
--- Table of screenshots presented in a single comparison form
-CREATE TABLE ComparisonScreenshots
-(
-    -- Columns
-    ComparisonId INTEGER NOT NULL,
-    ScreenshotId INTEGER NOT NULL,
-    -- A screenshot may be shown in a given form at most once
-    PRIMARY KEY (ComparisonId, ScreenshotId)
+    EvaluationSetId INTEGER NOT NULL,
+    RaterId INTEGER NOT NULL,
+    PerceptualScore INTEGER,
+    PRIMARY KEY (EvaluationSetId, RaterId),
+    FOREIGN KEY (PerceptualScore) REFERENCES PerceptualQuality(Score)
 );
 
 -- Table of white matter surface quality ratings
 CREATE TABLE WhiteMatterSurfaceComparison
 (
     -- Columns
-    ComparisonId INTEGER NOT NULL, -- Comparison form on which this rating is based
-    RaterId INTEGER NOT NULL,      -- Rater that assigned the score
-    BestOverlayId INTEGER,         -- Which overlay depicts WM/cGM interface best?
-    BestOverlayScore INTEGER,      -- How accurate does this overlay follow the boundary?
-                                   -- Score may be used as weight when computing a weighted
-                                   -- average of how often one or the other surface wins.
+    EvaluationSetId INTEGER NOT NULL,
+    RaterId INTEGER NOT NULL,
+    BestOverlayId INTEGER,
     -- Each screenshot may be rated by a registered rater no more than once
     FOREIGN KEY (RaterId) REFERENCES Raters(RaterId),
-    PRIMARY KEY (ComparisonId, RaterId),
+    PRIMARY KEY (EvaluationSetId, RaterId),
     -- Each rater must select exactly one best overlay and give it unique score
-    CONSTRAINT UC_Best  UNIQUE (ComparisonId, RaterId, BestOverlayId),
-    CONSTRAINT UC_Score UNIQUE (ComparisonId, RaterId, BestOverlayScore),
+    UNIQUE (EvaluationSetId, RaterId, BestOverlayId),
     -- Selected best overlay must be defined
-    FOREIGN KEY (BestOverlayId) REFERENCES Overlays(OverlayId),
-    -- Best overlay score must be a valid score
-    FOREIGN KEY (BestOverlayScore) REFERENCES Scores(Score)
+    FOREIGN KEY (BestOverlayId) REFERENCES Overlays(OverlayId)
 );
