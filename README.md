@@ -19,7 +19,7 @@ npm install jquery tether bootstrap@4.0.0-alpha.5
 
 ## https://www.npmjs.com/package/sqlite3#building-for-node-webkit
 NODE_WEBKIT_VERSION=0.19.0 # see latest version at https://github.com/rogerwang/node-webkit#downloads
-npm install sqlite3 --build-from-source --runtime=node-webkit --target_arch=x64 --target=$(NODE_WEBKIT_VERSION)
+npm install sqlite3 --build-from-source --runtime=node-webkit --target_arch=x64 --target=$NODE_WEBKIT_VERSION
 ```
 
 ### Build package
