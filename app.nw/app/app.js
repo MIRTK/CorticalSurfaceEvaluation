@@ -1,6 +1,5 @@
 var path = require('path');
 var sql = require('sqlite3');
-var db_file = 'data/sqlite3.db';
 
 global.initial_mesh_id = 3;
 global.white_mesh_id = 4;
