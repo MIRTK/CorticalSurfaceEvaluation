@@ -6,10 +6,10 @@ import os
 import sqlite3
 import argparse
 import random
+import string
 
-from vtk import vtkNIFTIImageReader, vtkMatrixToLinearTransform, vtkXMLPolyDataReader
-from mirtk.rendering.screenshots import (take_orthogonal_screenshots, range_to_level_window,
-                                         nearest_voxel, point_to_index)
+from vtk import vtkImageData, vtkPolyData, vtkMatrix4x4, vtkNIFTIImageReader, vtkMatrixToLinearTransform, vtkXMLPolyDataReader
+from mirtk.rendering.screenshots import take_orthogonal_screenshots, range_to_level_window
 
 
 def rgb(r, g, b):
@@ -35,6 +35,31 @@ colors = [
 ]
 
 line_width = 4
+verbose = 0
+
+
+# http://ideone.com/xykV7R
+class FormatPlaceholder:
+    def __init__(self, key):
+        self.key = key
+
+    def __format__(self, spec):
+        result = self.key
+        if spec:
+            result += ":" + spec
+        return "{" + result + "}"
+
+
+class FormatDict(dict):
+    def __missing__(self, key):
+        return FormatPlaceholder(key)
+
+
+def partial_format(format_string, **kwargs):
+    """Partially format string."""
+    formatter = string.Formatter()
+    mapping = FormatDict(**kwargs)
+    return formatter.vformat(format_string, (), mapping)
 
 
 def get_scan_id(db, subject_id, session_id):
@@ -67,26 +92,48 @@ def color_code(color):
     return "#{0:02x}{1:02x}{2:02x}".format(r, g, b)
 
 
-def any_screenshot_exists(prefix, suffix):
-    """Check if any of the screenshots already exists."""
-    for s in suffix:
-        if os.path.isfile(prefix + s + '.png'):
-            return True
-    return False
+def compute_offsets(length, subdiv):
+    """Compute slice offsets from ROI center."""
+    offsets = [0.]
+    if subdiv > 0:
+        offsets = []
+        delta = (length / 2.) / (subdiv + 1)
+        offset = -subdiv * delta
+        for i in xrange(2 * subdiv + 1):
+            offsets.append(offset)
+            offset += delta
+    return offsets
 
 
-def insert_screenshots(db, roi_id, base, prefix, suffix, overlays=[], colors=[]):
+def insert_screenshots(db, roi_id, base, screenshots, isnew, overlays=[], colors=[]):
     """Insert screenshots into database."""
+    n = 0
+    num_per_view = len(screenshots) / 3
     view_ids = ('A', 'C', 'S')
-    if base:
-        prefix = os.path.relpath(prefix, base)
-    for i in range(3):
-        db.execute("INSERT INTO Screenshots (FileName, ROI_Id, ViewId) VALUES (:path, :roi_id, :view_id)",
-                   dict(path=(prefix + suffix[i] + '.png'), roi_id=roi_id, view_id=view_ids[i]))
-        screenshot_id = db.lastrowid
-        for j in range(len(overlays)):
-            db.execute("INSERT INTO ScreenshotOverlays (ScreenshotId, OverlayId, Color) VALUES (:screenshot_id, :overlay_id, :color)",
-                       dict(screenshot_id=screenshot_id, overlay_id=overlays[j], color=color_code(colors[j])))
+    cur = db.cursor()
+    try:
+        for view_id in view_ids:
+            for i in xrange(num_per_view):
+                if isnew[n]:
+                    screenshot = screenshots[n]
+                    if base:
+                        screenshot = os.path.relpath(screenshot, base)
+                    if verbose > 1:
+                        print("INSERT " + screenshot)
+                    cur.execute("INSERT INTO Screenshots (FileName, ROI_Id, ViewId) VALUES (:path, :roi_id, :view_id)",
+                                dict(path=screenshot, roi_id=roi_id, view_id=view_id))
+                    screenshot_id = cur.lastrowid
+                    for j in xrange(len(overlays)):
+                        cur.execute("""
+                            INSERT INTO ScreenshotOverlays (ScreenshotId, OverlayId, Color)
+                            VALUES (:screenshot_id, :overlay_id, :color)
+                            """, dict(screenshot_id=screenshot_id,
+                                      overlay_id=overlays[j],
+                                      color=color_code(colors[j])))
+                n += 1
+        db.commit()
+    finally:
+        cur.close()
 
 
 def read_image(fname):
@@ -94,7 +141,11 @@ def read_image(fname):
     reader = vtkNIFTIImageReader()
     reader.SetFileName(fname)
     reader.UpdateWholeExtent()
-    return (reader.GetOutput(), reader.GetQFormMatrix())
+    output = vtkImageData()
+    output.DeepCopy(reader.GetOutput())
+    qform = vtkMatrix4x4()
+    qform.DeepCopy(reader.GetQFormMatrix())
+    return (output, qform)
 
 
 def read_surface(fname):
@@ -102,7 +153,9 @@ def read_surface(fname):
     reader = vtkXMLPolyDataReader()
     reader.SetFileName(fname)
     reader.UpdateWholeExtent()
-    return reader.GetOutput()
+    output = vtkPolyData()
+    output.DeepCopy(reader.GetOutput())
+    return output
 
 
 if __name__ == '__main__':
@@ -113,17 +166,24 @@ if __name__ == '__main__':
     parser.add_argument('--session', help="Session ID", required=True)
     parser.add_argument('--initial', help="Initial surface mesh")
     parser.add_argument('--white-matter', '--white', dest='white', help="White matter surface mesh")
-    parser.add_argument('--prefix', help="Common prefix of output files, including directory path")
+    parser.add_argument('--prefix', type=str, help="Output directory")
+    parser.add_argument('--format', help="Path format string of output files")
     parser.add_argument('--range', nargs=2, type=float, help="Minimum/maximum intensity used for greyscale color lookup table")
+    parser.add_argument('--subdiv', default=0, type=int, help="Number of subdivisions of each ROI half space")
     parser.add_argument('--size', default=(512, 512), nargs=2, type=int, help="Size of screenshots")
     parser.add_argument('-v', '--verbose', default=0, action='count', help="Verbosity of output messages")
     args = parser.parse_args()
+    verbose = args.verbose
 
     args.database = os.path.abspath(args.database)
-    if not args.prefix:
+    if args.prefix:
+        args.prefix = os.path.abspath(args.prefix)
+    else:
         args.prefix = os.path.join(os.path.dirname(args.database),
                                    '-'.join([args.subject, args.session]),
-                                   'screenshots', 'roi-{roi:06d}_idx-{i:03d}-{j:03d}-{k:03d}')
+                                   'screenshots')
+    if not args.format:
+        args.format = os.path.join('{prefix}', 'roi-{roi:06d}-{n:02d}_idx-{i:03d}-{j:03d}-{k:03d}_{suffix}')
     base_dir = os.path.dirname(args.database)
     if args.initial:
         initial_mesh = read_surface(os.path.abspath(args.initial))
@@ -144,98 +204,125 @@ if __name__ == '__main__':
     world2image.SetInput(qform)
     world2image.Inverse()
 
-    con = sqlite3.connect(args.database)
-    cur = con.cursor()
+    db = sqlite3.connect(args.database)
 
-    initial_mesh_id = get_overlay_id(cur, 'Initial surface')
-    white_mesh_id = get_overlay_id(cur, 'White matter surface')
+    try:
+        cur = db.cursor()
+        try:
+            initial_mesh_id = get_overlay_id(cur, 'Initial surface')
+            white_mesh_id = get_overlay_id(cur, 'White matter surface')
+            scan_id = get_scan_id(cur, args.subject, args.session)
+        finally:
+            cur.close()
 
-    scan_id = get_scan_id(cur, args.subject, args.session)
-    for row in cur.execute("SELECT ROI_Id, CenterX, CenterY, CenterZ, Size FROM ROIs WHERE ScanId = :scan_id",
-                           dict(scan_id=scan_id)).fetchall():
-        roi_id = row[0]
-        roi_center = [0, 0, 0]
-        roi_size = row[4]
-        world2image.TransformPoint((row[1], row[2], row[3]), roi_center)
-        index = nearest_voxel(point_to_index(roi_center, image.GetOrigin(), image.GetSpacing()))
-        roi_prefix = args.prefix.format(roi=roi_id, x=roi_center[0], y=roi_center[1], z=roi_center[2], i=index[0], j=index[1], k=index[2])
-        suffix = ('_axial', '_coronal', '_sagittal')
-        # screenshots without overlays
-        prefix = roi_prefix + '_image'
-        if any_screenshot_exists(prefix, suffix):
+        suffix = ('a', 'c', 's')
+        for row in db.execute("SELECT ROI_Id, CenterX, CenterY, CenterZ, Size FROM ROIs WHERE ScanId = :scan_id",
+                              dict(scan_id=scan_id)).fetchall():
+            roi_id = row[0]
+            roi_center = [0, 0, 0]
+            roi_size = row[4]
+            world2image.TransformPoint((row[1], row[2], row[3]), roi_center)
+            offsets = compute_offsets(roi_size, args.subdiv)
+            # screenshots without overlays
             if args.verbose > 0:
-                print("At least one screenshot with prefix {} already exists".format(prefix))
-        else:
-            take_orthogonal_screenshots(image, qform=qform, prefix=prefix, suffix=suffix,
-                                        center=roi_center, length=roi_size, size=args.size,
-                                        level_window=level_window)
+                print("Take orthogonal screenshots of ROI {roi}".format(roi=roi_id))
+            path_format = partial_format(args.format, roi=roi_id, suffix="image_{suffix}")
+            paths = []
+            try:
+                paths = take_orthogonal_screenshots(
+                    image, level_window=level_window, qform=qform,
+                    prefix=args.prefix, suffix=suffix, path_format=path_format,
+                    center=roi_center, length=roi_size, offsets=offsets,
+                    size=args.size, overwrite=False
+                )
+                insert_screenshots(db, roi_id=roi_id, base=base_dir, screenshots=paths[0], isnew=paths[1])
+            except BaseException as e:
+                for path in paths:
+                        if os.path.isfile(path):
+                            os.remove(path)
+                raise(e)
             if args.verbose > 0:
                 print("Saved orthogonal screenshots of ROI {roi}".format(roi=roi_id))
-                if args.verbose > 1:
-                    print("\tPrefix = " + prefix)
-            insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix)
-        # screenshots with initial surface overlay
-        if initial_mesh:
-            prefix = roi_prefix + '_image_with_initial_surface'
-            if any_screenshot_exists(prefix, suffix):
+            # screenshots with initial surface overlay
+            if initial_mesh:
                 if args.verbose > 0:
-                    print("At least one screenshot with prefix {} already exists".format(prefix))
-            else:
+                    print("Take orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
+                          " with initial surface contours")
+                path_format = partial_format(args.format, roi=roi_id, suffix="image+initial_{suffix}")
                 polydata = [initial_mesh]
                 overlays = [initial_mesh_id]
-                take_orthogonal_screenshots(image, qform=qform, prefix=prefix, suffix=suffix,
-                                            center=roi_center, length=roi_size, size=args.size,
-                                            polydata=polydata, colors=[color_of_single_contour_overlay],
-                                            line_width=line_width, level_window=level_window)
+                paths = []
+                try:
+                    paths = take_orthogonal_screenshots(
+                        image, level_window=level_window, qform=qform,
+                        prefix=args.prefix, suffix=suffix, path_format=path_format,
+                        center=roi_center, length=roi_size, offsets=offsets,
+                        polydata=polydata, colors=[color_of_single_contour_overlay],
+                        line_width=line_width, size=args.size, overwrite=False
+                    )
+                    insert_screenshots(db, roi_id=roi_id, base=base_dir, screenshots=paths[0], isnew=paths[1],
+                                       overlays=overlays, colors=[color_of_single_contour_overlay])
+                except BaseException as e:
+                    for path in paths:
+                        if os.path.isfile(path):
+                            os.remove(path)
+                    raise(e)
                 if args.verbose > 0:
                     print("Saved orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with initial surface contours")
-                    if args.verbose > 1:
-                        print("\tPrefix = " + prefix)
-                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix,
-                                   overlays=overlays, colors=[color_of_single_contour_overlay])
-        # screenshots with white matter surface overlay
-        if white_mesh:
-            prefix = roi_prefix + '_image_with_white_matter_surface'
-            if any_screenshot_exists(prefix, suffix):
+            # screenshots with white matter surface overlay
+            if white_mesh:
                 if args.verbose > 0:
-                    print("At least one screenshot with prefix {} already exists".format(prefix))
-            else:
+                    print("Take orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
+                          " with white matter surface contours")
+                path_format = partial_format(args.format, roi=roi_id, suffix="image+white_{suffix}")
                 polydata = [white_mesh]
                 overlays = [white_mesh_id]
-                take_orthogonal_screenshots(image, qform=qform, prefix=prefix, suffix=suffix,
-                                            center=roi_center, length=roi_size, size=args.size,
-                                            polydata=polydata, colors=[color_of_single_contour_overlay],
-                                            line_width=line_width, level_window=level_window)
+                paths = []
+                try:
+                    paths = take_orthogonal_screenshots(
+                        image, level_window=level_window, qform=qform,
+                        prefix=args.prefix, suffix=suffix, path_format=path_format,
+                        center=roi_center, length=roi_size, offsets=offsets,
+                        polydata=polydata, colors=[color_of_single_contour_overlay],
+                        line_width=line_width, size=args.size, overwrite=False)
+                    insert_screenshots(db, roi_id=roi_id, base=base_dir, screenshots=paths[0], isnew=paths[1],
+                                       overlays=overlays, colors=[color_of_single_contour_overlay])
+                except BaseException as e:
+                    for path in paths:
+                        if os.path.isfile(path):
+                            os.remove(path)
+                    raise(e)
                 if args.verbose > 0:
                     print("Saved orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with white matter surface contours")
-                    if args.verbose > 1:
-                        print("\tPrefix = " + prefix)
-                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix,
-                                   overlays=overlays, colors=[color_of_single_contour_overlay])
-        # screenshots with both initial and white matter surfaces overlayed
-        if initial_mesh and white_mesh:
-            random.shuffle(colors)
-            prefix = roi_prefix + '_image_with_initial_and_white_matter_surface'
-            if any_screenshot_exists(prefix, suffix):
+            # screenshots with both initial and white matter surfaces overlayed
+            if initial_mesh and white_mesh:
                 if args.verbose > 0:
-                    print("At least one screenshot with prefix {} already exists".format(prefix))
-            else:
+                    print("Take orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
+                          " with initial and white matter surface contours")
+                random.shuffle(colors)
+                path_format = partial_format(args.format, roi=roi_id, suffix="image+initial+white_{suffix}")
                 polydata = [initial_mesh, white_mesh]
                 overlays = [initial_mesh_id, white_mesh_id]
-                take_orthogonal_screenshots(image, qform=qform, prefix=prefix, suffix=suffix,
-                                            center=roi_center, length=roi_size, size=args.size,
-                                            polydata=polydata, colors=colors, line_width=line_width,
-                                            level_window=level_window)
+                paths = []
+                try:
+                    paths = take_orthogonal_screenshots(
+                        image, level_window=level_window, qform=qform,
+                        prefix=args.prefix, suffix=suffix, path_format=path_format,
+                        center=roi_center, length=roi_size, offsets=offsets,
+                        polydata=polydata, colors=colors, line_width=line_width,
+                        size=args.size, overwrite=False)
+                    insert_screenshots(db, roi_id=roi_id, base=base_dir,
+                                       screenshots=paths[0], isnew=paths[1],
+                                       overlays=overlays, colors=colors)
+                except BaseException as e:
+                    for path in paths:
+                        if os.path.isfile(path):
+                            os.remove(path)
+                    raise(e)
                 if args.verbose > 0:
                     print("Saved orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with initial and white matter surface contours")
-                    if args.verbose > 1:
-                        print("\tPrefix = " + prefix)
-                insert_screenshots(cur, roi_id=roi_id, base=base_dir, prefix=prefix, suffix=suffix,
-                                   overlays=overlays, colors=colors)
-
-    con.commit()
-    cur.close()
-    con.close()
+    finally:
+        db.close()
