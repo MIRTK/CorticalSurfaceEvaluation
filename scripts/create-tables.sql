@@ -115,6 +115,7 @@ CREATE TABLE Raters
     FirstName VARCHAR(64) NOT NULL,
     LastName VARCHAR(64) NOT NULL,
     Affiliation VARCHAR(255),
+    ShowHelp INTEGER DEFAULT 1,
     UNIQUE (Email)
 );
 

@@ -187,14 +187,6 @@
         </div>
         <button type="submit" class="btn btn-primary">Sign in</button>
       </form>
-      <script>
-        $('#loginForm').submit(function(event) {
-          var email = $('#raterEmail').val();
-          var password = $('#raterPassword').val();
-          global.db.get("SELECT * FROM Raters WHERE Email='" + email + "' AND Password='" + password + "'", setRaterId);
-          event.preventDefault();
-        });
-      </script>
     </template>
 
     <!-- Template: Surface evaluation -->

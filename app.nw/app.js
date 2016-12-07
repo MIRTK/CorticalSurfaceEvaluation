@@ -8,6 +8,8 @@ var contactMailTo = "mailto:andreas.schuh@imperial.ac.uk?subject=Neonatal cortex
 global.initial_mesh_id = 3;
 global.white_mesh_id = 4;
 
+global.db = null;
+global.dbPrev = null;
 global.dbFile = null;
 global.imgBase = null;
 global.evalSetId = 0;
@@ -192,6 +194,113 @@ if (supportsTemplate()) {
   });
 } else {
   showErrorMessage("template HTML tag not supported");
+}
+
+// ----------------------------------------------------------------------------
+// Open database
+function chooseDatabase(input) {
+  var chooser = $(input);
+  chooser.off('change');
+  chooser.change(function(event) {
+    openDatabase($(this).val())
+  });
+  chooser.trigger('click');  
+}
+
+function openDatabase(db_file) {
+  global.raterId = 0;
+  global.dbFile = db_file;
+  global.imgBase = path.dirname(db_file);
+  global.dbPrev = global.db;
+  global.db = new sql.Database(db_file, function (err) {
+    if (err) {
+      showErrorMessage(err);
+    } else {
+      if (global.dbPrev) {
+        global.dbPrev.close();
+        global.dbPrev = null;
+      }
+      updateOpenPage();
+    }
+  });
+}
+
+function onLogIn(err, row) {
+  if (err) {
+    showErrorMessage(err);
+  } else if (row) {
+    clearErrors();
+    var raterId = row['RaterId'];
+    if (raterId) {
+      global.raterId = raterId;
+      if (row['ShowHelp']) {
+        global.db.run("UPDATE Raters SET ShowHelp = 0 WHERE RaterId = ?", global.raterId, function (err) {
+          if (err) showErrorMessage(err);
+        });
+        showPage("help");
+      } else {
+        updateOpenPage();
+      }
+    } else {
+      showError("Missing 'RaterId' column in 'Raters' table");
+    }
+  } else {
+    showError("Error: Unknown email address or password not correct.");
+  }
+  clearPasswordField();
+}
+
+function clearPasswordField() {
+  $("#raterPassword").val("");
+}
+
+function updateSummary() {
+  queryTotalNumberOfEvaluationSets();
+  queryRemainingNumberOfEvaluationSets();
+  queryTotalNumberOfComparisonSets();
+  queryRemainingNumberOfComparisonSets();
+  $("#summary").show();
+}
+
+function getMailToLink() {
+  if (global.dbFile) {
+    return contactMailTo + "&body=PLEASE ATTACH FILE: " + global.dbFile;
+  } else {
+    return contactMailTo;
+  }
+}
+
+function updateOpenPage() {
+  $('.contact').text(contactName);
+  if (global.dbFile) {
+    $('#mail').attr('href', getMailToLink());
+    $('#mail').removeClass('disabled');
+  } else {
+    $('#mail').removeAttr('href');
+    $('#mail').addClass('disabled');
+  }
+  var loginForm = $('#loginForm');
+  loginForm.off("submit");
+  if (global.raterId > 0) {
+    loginForm.hide();
+    enablePage("eval");
+    enablePage("comp");
+    updateSummary();
+  } else {
+    disablePage("eval");
+    disablePage("comp");
+    $("#summary").hide();
+    if (global.db) {
+      loginForm.off("submit").submit(function(event) {
+        global.db.get("SELECT RaterId, ShowHelp FROM Raters WHERE Email = ? AND Password = ?",
+                      $('#raterEmail').val(), $('#raterPassword').val(), onLogIn);
+        event.preventDefault();
+      });
+      loginForm.show();
+    } else {
+      loginForm.hide();
+    }
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -388,89 +497,6 @@ function updatePercentageOfComparisonSetsDone() {
   } else {
     $(".comp .done").text('0%');
   }
-}
-
-// ----------------------------------------------------------------------------
-// Open database
-function chooseDatabase(input) {
-  var chooser = $(input);
-  chooser.off('change');
-  chooser.change(function(event) {
-    openDatabase($(this).val())
-  });
-  chooser.trigger('click');  
-}
-
-function openDatabase(db_file) {
-  global.dbFile = db_file;
-  global.imgBase = path.dirname(db_file);
-  global.db = new sql.Database(db_file, function (err) {
-    if (err) {
-      showErrorMessage(err);
-    } else {
-      $("#loginForm").show();
-    }
-  });
-}
-
-function clearPasswordField() {
-  $("#raterPassword").val("");
-}
-
-function updateSummary() {
-  queryTotalNumberOfEvaluationSets();
-  queryRemainingNumberOfEvaluationSets();
-  queryTotalNumberOfComparisonSets();
-  queryRemainingNumberOfComparisonSets();
-  $("#summary").show();
-}
-
-function getMailToLink() {
-  if (global.dbFile) {
-    return contactMailTo + "&body=PLEASE ATTACH FILE: " + global.dbFile;
-  } else {
-    return contactMailTo;
-  }
-}
-
-function updateOpenPage() {
-  $('.contact').text(contactName);
-  if (global.dbFile) {
-    $('#mail').attr('href', getMailToLink());
-    $('#mail').removeClass('disabled');
-  } else {
-    $('#mail').removeAttr('href');
-    $('#mail').addClass('disabled');
-  }
-  if (global.raterId > 0) {
-    enablePage("eval");
-    enablePage("comp");
-    $("#loginForm").hide();
-    updateSummary();
-  } else {
-    disablePage("eval");
-    disablePage("comp");
-    $("#summary").hide();
-    $("#loginForm").hide();
-  }
-}
-
-function setRaterId(err, row) {
-  if (err) {
-    showErrorMessage(err);
-  } else if (row) {
-    clearErrors();
-    var raterId = row['RaterId'];
-    if (raterId) {
-      global.raterId = raterId;
-      updateOpenPage();
-    } else {
-      showError("Missing 'RaterId' column in 'Raters' table");
-    }
-  } else {
-    showError("Error: Unknown email address or password not correct.");
-  }
-  clearPasswordField();
 }
 
 // ----------------------------------------------------------------------------
