@@ -33,7 +33,7 @@ def get_overlay(db, name):
 
 
 def get_orthogonal_screenshots(db, roi, overlays=[]):
-    """Get IDs of orthogonal screenshots showing only the specified overlays or none at all."""
+    """Get IDs of orthogonal screenshots showing only the specified overlays."""
     if overlays:
         res = db.execute("""
             SELECT ScreenshotId FROM Screenshots AS T1
