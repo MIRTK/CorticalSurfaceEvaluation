@@ -309,16 +309,15 @@ function appendScreenshot(err, row) {
   if (err) {
     showErrorMessage(err);
   } else {
-    var div = $("#screenshots>.row").last();
-    if (div.length === 0 || div.children("div").length === 3) {
-      div = $("<div class='row'></div>").appendTo("#screenshots");
+    var img = $("#screenshots").find(".orthogonal-views ." + row['ViewId'] + " img[src='']").first();
+    if (img.length === 0) {
+      var template = document.querySelector('#orthogonalViewsTemplate').content;
+      views = document.importNode(template, true);
+      div = $("#screenshots").append(views);
+      img = div.find("." + row['ViewId'] + " img");
     }
-    var template = document.querySelector('#screenshotTemplate').content;
-    var clone = document.importNode(template, true);
-    var img = $(clone).find('img');
     img.attr('src', 'file://' + path.join(global.imgBase, row['FileName']));
     img.attr('alt', "Screenshot " + row['ScreenshotId']);
-    div.append(clone);
   }
 }
 

@@ -13,8 +13,24 @@
     min-width: 100px;
 }
 
-.center-caption {
+#screenshots {
     text-align: center;
+}
+
+#screenshots .orthogonal-views {
+    text-align: center;
+}
+
+figure {
+    display: inline-block;
+    margin-bottom: 4px;
+}
+
+figure img {
+    width: 24vh;
+    max-width: 24vw;
+    height: 24vh;
+    max-height: 24vw;
 }
 
 .borderless td, .borderless th {

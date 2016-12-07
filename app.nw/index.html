@@ -193,12 +193,12 @@
     <template id="evalTemplate">
       <div class="eval collapse" id="eval">
         <div class="top-notice row">
-          <div class="col-sm-6">
-            Please rate this result <mark>within 10 sec</mark>.
-          </div>
-          <div class="col-sm-6 text-xs-right" id="progress">
+          <div class="col-sm-6" id="progress">
             <strong><span class="remaining"></strong> remaining<span style="display: none"> out of <span class="total"></span></span>,
             you've rated <span class="done"></span>!
+          </div>
+          <div class="col-sm-6 text-xs-right">
+            <span class="collapse" id="timelimit">Please rate this result <mark>within 10 sec</mark>.</span>
           </div>
         </div>
         <div id="screenshots">
@@ -218,12 +218,12 @@
     <template id="compTemplate">
       <div class="comp collapse" id="comp">
         <div class="top-notice row">
-          <div class="col-sm-6">
-            Please rate this result <mark>within 10 sec</mark>.
-          </div>
-          <div class="col-sm-6 text-xs-right" id="progress">
+          <div class="col-sm-6" id="progress">
             <strong><span class="remaining"></strong> remaining<span style="display: none"> out of <span class="total"></span></span>,
             you've rated <span class="done"></span>!
+          </div>
+          <div class="col-sm-6 text-xs-right">
+            <span class="collapse" id="timelimit">Please rate this result <mark>within 10 sec</mark>.</span>
           </div>
         </div>
         <div id="screenshots">
@@ -253,14 +253,24 @@
       </div>
     </template>
     <template id="screenshotTemplate">
-      <div class="col-sm-4">
-        <div class="thumbnail">
-          <img style="width:100%" />
-          <div class="caption center-caption">
-            <p></p>
-          </div>
-        </div>
-      </div> 
+      <figure>
+        <img src="" />
+        <figcaption>
+        </figcaption>
+      </figure>
+    </template>
+    <template id="orthogonalViewsTemplate">
+      <div class="orthogonal-views">
+        <figure class="A axial">
+          <img src="" alt="none" />
+        </figure>
+        <figure class="C coronal">
+          <img src="" alt="none" />
+        </figure>
+        <figure class="S sagittal">
+          <img src="" alt="none" />
+        </figure>
+      </div>
     </template>
 
     <!-- Scripts -->
