@@ -13,6 +13,7 @@ from mirtk.rendering.screenshots import take_orthogonal_screenshots, range_to_le
 
 
 def rgb(r, g, b):
+    """Convert RGB byte value in [0, 255] to float in [0, 1]."""
     return (float(r) / 255., float(g) / 255., float(b) / 255.)
 
 
@@ -24,12 +25,16 @@ color_of_single_contour_overlay = rgb(255, 245, 61)
 #
 # This list is randomly shuffled in the for loop of the main function in place
 # and the first two colors are used for the two different contours.
+#
+# By default, only the first two colors are used such that the buttons of
+# the two choices don't need to change color all the time. Only the
+# assignment of each of the two colors to the two contours is random.
 colors = [
+    rgb(0, 194, 120),   # dark green (+orange)
+    rgb(255, 193, 61),  # orange (+dark green)
     rgb(61, 216, 255),  # light blue
     rgb(39, 0, 194),    # dark blue
     rgb(135, 255, 61),  # light green
-    rgb(0, 194, 120),   # dark green
-    rgb(255, 193, 61),  # orange
     rgb(255, 61, 242),  # pink
     rgb(247, 32, 57)    # red
 ]
@@ -171,6 +176,7 @@ if __name__ == '__main__':
     parser.add_argument('--range', nargs=2, type=float, help="Minimum/maximum intensity used for greyscale color lookup table")
     parser.add_argument('--subdiv', default=0, type=int, help="Number of subdivisions of each ROI half space")
     parser.add_argument('--size', default=(512, 512), nargs=2, type=int, help="Size of screenshots")
+    parser.add_argument('--use-all-colors', action='store_true', help="Use all available colors for comparison, not only two")
     parser.add_argument('-v', '--verbose', default=0, action='count', help="Verbosity of output messages")
     args = parser.parse_args()
     verbose = args.verbose
@@ -199,6 +205,9 @@ if __name__ == '__main__':
     else:
         level_window = None
 
+    if not args.use_all_colors:
+        colors = colors[0:2]
+
     image, qform = read_image(os.path.abspath(args.image))
     world2image = vtkMatrixToLinearTransform()
     world2image.SetInput(qform)
@@ -226,8 +235,8 @@ if __name__ == '__main__':
             # screenshots without overlays
             if args.verbose > 0:
                 print("Take orthogonal screenshots of ROI {roi}".format(roi=roi_id))
-            path_format = partial_format(args.format, roi=roi_id, suffix="image_{suffix}")
             paths = []
+            path_format = partial_format(args.format, roi=roi_id, suffix="image_{suffix}")
             try:
                 paths = take_orthogonal_screenshots(
                     image, level_window=level_window, qform=qform,
@@ -248,10 +257,10 @@ if __name__ == '__main__':
                 if args.verbose > 0:
                     print("Take orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with initial surface contours")
+                paths = []
                 path_format = partial_format(args.format, roi=roi_id, suffix="image+initial_{suffix}")
                 polydata = [initial_mesh]
                 overlays = [initial_mesh_id]
-                paths = []
                 try:
                     paths = take_orthogonal_screenshots(
                         image, level_window=level_window, qform=qform,
@@ -275,10 +284,10 @@ if __name__ == '__main__':
                 if args.verbose > 0:
                     print("Take orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with white matter surface contours")
+                paths = []
                 path_format = partial_format(args.format, roi=roi_id, suffix="image+white_{suffix}")
                 polydata = [white_mesh]
                 overlays = [white_mesh_id]
-                paths = []
                 try:
                     paths = take_orthogonal_screenshots(
                         image, level_window=level_window, qform=qform,
@@ -301,11 +310,11 @@ if __name__ == '__main__':
                 if args.verbose > 0:
                     print("Take orthogonal screenshots of ROI {roi}".format(roi=roi_id) +
                           " with initial and white matter surface contours")
-                random.shuffle(colors)
+                paths = []
                 path_format = partial_format(args.format, roi=roi_id, suffix="image+initial+white_{suffix}")
                 polydata = [initial_mesh, white_mesh]
                 overlays = [initial_mesh_id, white_mesh_id]
-                paths = []
+                random.shuffle(colors)
                 try:
                     paths = take_orthogonal_screenshots(
                         image, level_window=level_window, qform=qform,
