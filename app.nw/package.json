@@ -1,6 +1,6 @@
 {
   "name": "CorticalSurfaceEvaluation",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "App for evaluation of reconstructed neonatal cortical surfaces",
   "main": "index.html",
   "author": "Andreas Schuh",
@@ -20,11 +20,12 @@
     "title": "Cortical Surface Evaluation",
     "min_width": 800,
     "min_height": 800,
-    "toolbar": false
+    "toolbar": true
   },
   "dependencies": {
     "bootstrap": "^4.0.0-alpha.5",
     "jquery": "^3.1.1",
     "sqlite3": "^3.1.8"
-  }
+  },
+  "chromium-args": "--enable-logging=stderr"
 }
