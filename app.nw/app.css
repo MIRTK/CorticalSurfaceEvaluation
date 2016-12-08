@@ -8,9 +8,14 @@
     text-align: center;
 }
 
-.score-toolbar button, .ternary-choice-toolbar button {
+.score-toolbar button {
     width: 10%;
-    min-width: 100px;
+    min-width: 120px;
+}
+
+.ternary-choice-toolbar button {
+    width: 10%;
+    min-width: 150px;
 }
 
 figure {

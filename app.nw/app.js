@@ -160,6 +160,7 @@ function updatePage(name) {
 }
 
 function showPage(name) {
+  $("html").off('keyup');
   $('#container').hide();
   changeNavLink(name);
   changeTemplate(name);
@@ -722,18 +723,57 @@ function showNextEvaluationSet(err, rows) {
 }
 
 function onEvalPageReady() {
-  $("#scores button").off('click').click(function (event) {
+  $("#scores button").click(function (event) {
     var table = getEvalTableName();
-    var score = parseInt(this.id.split('-')[1]);
-    global.db.run(`INSERT INTO ` + table + ` (EvaluationSetId, RaterId, PerceptualScore) VALUES ($set, $rater, $score)`,
-      {
-        $set: global.evalSetId,
-        $rater: global.raterId,
-        $score: score
-      }, updateEvalPage);
+    saveQualityScore(parseInt(this.id.split('-')[1]), updateEvalPage);
     event.preventDefault();
   });
+  $("html").keyup(function (event) {
+    // "1" or [bB]ad
+    if (event.which == 49 || event.which == 66) {
+      saveQualityScore(1, updateEvalPage);
+      event.preventDefault();
+      return false;
+    }
+    // "2" or [pP]ad
+    if (event.which == 50 || event.which == 80) {
+      saveQualityScore(2, updateEvalPage);
+      event.preventDefault();
+      return false;
+    }
+    // "3" or [fF]ir
+    if (event.which == 51 || event.which == 70) {
+      saveQualityScore(3, updateEvalPage);
+      event.preventDefault();
+      return false;
+    }
+    // "4" or [gG]ood
+    if (event.which == 52 || event.which == 71) {
+      saveQualityScore(4, updateEvalPage);
+      event.preventDefault();
+      return false;
+    }
+    // "5" or [eE]xcellent
+    if (event.which == 53 || event.which == 69) {
+      saveQualityScore(5, updateEvalPage);
+      event.preventDefault();
+      return false;
+    }
+  });
   $("#eval").show();
+}
+
+function saveQualityScore(score, callback) {
+  $("html").off("keyup");
+  $("#scores button").off("click");
+  global.db.run("INSERT INTO " + getEvalTableName() +
+                " (EvaluationSetId, RaterId, PerceptualScore)" +
+                " VALUES ($set, $rater, $score)",
+    {
+      $set: global.evalSetId,
+      $rater: global.raterId,
+      $score: score
+    }, callback);
 }
 
 function updateEvalPage() {
@@ -864,16 +904,48 @@ function onCompPageReady() {
     } else {
       best = global.compOverlayIds[choice];
     }
-    global.db.run(`INSERT INTO WhiteMatterSurfaceComparison (EvaluationSetId, RaterId, BestOverlayId) VALUES ($set, $rater, $best)`,
-      {
-        $set: global.compSetId,
-        $rater: global.raterId,
-        $best: best
-      }, updateCompPage);
+    saveBestOverlayChoice(best, updateCompPage);
     event.preventDefault();
     return false;
   });
+  $("html").keyup(function (event) {
+    // left arraw or a/A
+    if (event.which == 37 || event.which == 65) {
+      saveBestOverlayChoice(0, updateCompPage);
+      event.preventDefault();
+      return false;
+    }
+    // right arraw or b/B
+    if (event.which == 39 || event.which == 66) {
+      saveBestOverlayChoice(1, updateCompPage);
+      event.preventDefault();
+      return false;
+    }
+    // up/down arraw or n/N
+    if (event.which == 38 || event.which == 40 || event.which == 78) {
+      saveBestOverlayChoice(2, updateCompPage);
+      event.preventDefault();
+      return false;
+    }
+  });
   $("#comp").show();
+}
+
+function saveBestOverlayChoice(choice, callback) {
+  $("html").off('keyup');
+  $("#choice button").off('click');
+  var bestOverlayId = 0;
+  if (choice === 2) {
+    bestOverlayId = 1;
+  } else {
+    bestOverlayId = global.compOverlayIds[choice];
+  }
+  global.db.run(`INSERT INTO WhiteMatterSurfaceComparison (EvaluationSetId, RaterId, BestOverlayId) VALUES ($set, $rater, $best)`,
+    {
+      $set: global.compSetId,
+      $rater: global.raterId,
+      $best: bestOverlayId
+    }, callback);
 }
 
 function initCompPage() {

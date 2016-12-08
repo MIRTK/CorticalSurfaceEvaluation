@@ -65,27 +65,32 @@
         <table class="table borderless" id="help-scores">
           <tbody>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-danger" id="test-score-1">Bad</button></td>
+              <td><button class="btn btn-sm btn-block btn-danger" id="test-score-1">1-<strong>B</strong>ad</button></td>
               <td>Contour follows random, noisy, or other tissue edge.</td>
             </tr>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-warning" id="test-score-2">Poor</button></td>
+              <td><button class="btn btn-sm btn-block btn-warning" id="test-score-2">2-<strong>P</strong>oor</button></td>
               <td>Contour substantially deviates from tissue boundary.</td>
             </tr>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-info" id="test-score-3">Fair</button></td>
+              <td><button class="btn btn-sm btn-block btn-info" id="test-score-3">3-<strong>F</strong>air</button></td>
               <td>Contour close, but mainly not within sub-pixel accuracy.</td>
             </tr>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-primary" id="test-score-4">Good</button></td>
+              <td><button class="btn btn-sm btn-block btn-primary" id="test-score-4">4-<strong>G</strong>ood</button></td>
               <td>Contour for the most part correct, but with minor irregularities.</td>
             </tr>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-success" id="test-score-5">Excellent</button></td>
+              <td><button class="btn btn-sm btn-block btn-success" id="test-score-5">5-<strong>E</strong>xcellent</button></td>
               <td>Contour depicts tissue boundary within sub-pixel accuracy.</td>
             </tr>
           </tbody>
         </table>
+        You can enter the scores by either clicking the respective button, or pressing either the key on your keyboard
+        corresponding to the numeric score value, e.g., "3", or the first bold highlighted letter of the corresponding
+        verbal score, i.e., "f" for "Fair" and "e" for "Excellent".
+        The labels of the buttons also indicate these corresponding keys.
+      </p>
       <div class="card">
         <div class="card-header" style="background-color: #ffffbb; border-color: #ffffbb;">
           Note
@@ -109,6 +114,13 @@
         images that best depicts the tissue boundary.
         When both surfaces either delineate the boundary perfectly well or contain comparable
         errors, please choose the option "Neither".
+      </p>
+      <p>
+        You can enter your scores either by clicking the respective button or by pressing the key
+        on your keyboard corresponding to your choice, i.e., "a" for choice A, "b" for choice B,
+        and "n" for neither choice. Alternativley, use the arrow keys instead: left arrow for choice A,
+        right arrow for choice B, and down/up arrow for neither choice. The labels of the buttons
+        also indicate these corresponding keys.
       </p>
       <div class="card">
         <div class="card-header" style="background-color: #ffffbb; border-color: #ffffbb;">
@@ -200,11 +212,11 @@
 
         </div>
         <div id="scores" class="btn-toolbar score-toolbar">
-          <button id="score-1" type="button" class="btn btn-danger">Bad</button>
-          <button id="score-2" type="button" class="btn btn-warning">Poor</button>
-          <button id="score-3" type="button" class="btn btn-info">Fair</button>
-          <button id="score-4" type="button" class="btn btn-primary">Good</button>
-          <button id="score-5" type="button" class="btn btn-success">Excellent</button>
+          <button id="score-1" type="button" class="btn btn-danger">1-<strong>B</strong>ad</button>
+          <button id="score-2" type="button" class="btn btn-warning">2-<strong>P</strong>oor</button>
+          <button id="score-3" type="button" class="btn btn-info">3-<strong>F</strong>air</button>
+          <button id="score-4" type="button" class="btn btn-primary">4-<strong>G</strong>ood</button>
+          <button id="score-5" type="button" class="btn btn-success">5-<strong>E</strong>xcellent</button>
         </div>
       </div>
     </template>
@@ -220,9 +232,9 @@
 
         </div>
         <div id="choice" class="btn-toolbar ternary-choice-toolbar">
-          <button id="choice-0" type="button" class="btn">A</button>
-          <button id="choice-2" type="button" class="btn btn-default">Neither</button>
-          <button id="choice-1" type="button" class="btn">B</button>
+          <button id="choice-0" type="button" class="btn"><strong>A</strong> [left]</button>
+          <button id="choice-2" type="button" class="btn btn-default"><strong>N</strong>either [down]</button>
+          <button id="choice-1" type="button" class="btn"><strong>B</strong> [right]</button>
         </div>
       </div>
     </template>
