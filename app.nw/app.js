@@ -5,11 +5,10 @@ var startPage = "open";
 var contactName = "Andreas Schuh";
 var contactMailTo = "mailto:andreas.schuh@imperial.ac.uk?subject=Neonatal cortex evaluation"
 
+global.neitherMeshId = 1;
 global.initialMeshId = 3;
-global.initialMeshColor = undefined;
-
 global.whiteMeshId = 4;
-global.whiteMeshColor = undefined;
+global.v2mMeshId = 5;
 
 global.db = null;
 global.dbPrev = null;
@@ -19,18 +18,23 @@ global.evalSetId = 0;
 global.raterId = 0;
 global.overlayId = 0;
 
+global.compSetId = 0;
+global.compTableName = '';
+
 // When the comparison set contains just screenshots where only two colors
-// are used for the overlaid initial and white matter surface contours,
-// these two colors are used for the two buttons of the respective choice.
-// The buttons then never change color to not confuse the rater with two
-// many color changes. The only two colors used for the overlays are set
-// as button colors by initCompPage once. Otherwise, the button color
-// corresponds to the respective overlay in the compOverlayIds array.
+// are used for the two overlaid surface contours, these two colors are used
+// for the two buttons of the respective choice. The buttons then never change
+// color to not confuse the rater with two many color changes. Otherwise,
+// this list is empty and the colors of the buttons is set each time to
+// the color of the respective contour, instead.
 global.compColors = [];
 
-// The following array is randomly shuffled in place by updateCompPage
-// It is used to assign an overlay to one of the two choices (excl. "Neither").
-global.compOverlayIds = [global.initialMeshId, global.whiteMeshId];
+// The following array is initialized by initCompPage and either randomly
+// shuffled in place by updateCompPage when multiple colors per overlay
+// are being used, or re-ordered according to the current 2-color assingment
+// of the two overlays. It is used to assign an overlay to one of the
+// two choices, '#choice-0' and '#choice-1' (excl. "Neither").
+global.compOverlayIds = [];
 
 
 // ----------------------------------------------------------------------------
@@ -88,6 +92,33 @@ function escapeHtml(string) {
   });
 }
 
+function sqlValueInSet(column, cond, values) {
+  var code = undefined;
+  if (values instanceof Array) {
+    if (values.length === 1 && cond == "NOT IN") {
+      code = column + " <> " + values[0];
+    } else if (values.length === 1 && cond == "IN") {
+      code = column + " = " + values[0];
+    } else {
+      code = column + " " + cond + " (";
+      for (var i = 0; i < values.length; i++) {
+        if (i > 0) code += ", ";
+        code += values[i];
+      }
+      code += ")";
+    }
+  } else {
+    if (cond == "NOT IN") {
+      code = column + " <> " + values;
+    } else if (cond == "IN") {
+      code = column + " = " + values;
+    } else {
+      code = column + " " + cond + " (" + values + ")";
+    }
+  }
+  return code;
+}
+
 function showError(html) {
   var template = document.querySelector('#errorTemplate').content;
   var clone = document.importNode(template, true);
@@ -98,6 +129,10 @@ function showError(html) {
 
 function showErrorMessage(msg) {
   showError(escapeHtml(msg));
+}
+
+function showSqlError(msg, err) {
+  showError(msg + ": " + escapeHtml(err));
 }
 
 function showSuccess(html) {
@@ -141,6 +176,8 @@ function hideActivePage() {
 }
 
 function updatePage(name) {
+  resetCompPage();
+  resetEvalPage();
   if (name === "help") {
     $("#help-scores button").click(function (event) {
       var parts = this.id.split('-');
@@ -153,9 +190,9 @@ function updatePage(name) {
   } else if (name === "open") {
     updateOpenPage();
   } else if (name === "eval") {
-    updateEvalPage();
+    initEvalPage(global.initialMeshId, global.whiteMeshId);
   } else if (name === "comp") {
-    initCompPage();
+    initCompPage("WhiteMatterSurfaceComparison", global.initialMeshId, global.whiteMeshId);
   }
 }
 
@@ -300,8 +337,8 @@ function clearPasswordField() {
 function updateSummary() {
   queryTotalNumberOfEvaluationSets();
   queryRemainingNumberOfEvaluationSets();
-  queryTotalNumberOfComparisonSets();
-  queryRemainingNumberOfComparisonSets();
+  queryTotalNumberOfComparisonSets([global.initialMeshId, global.whiteMeshId]);
+  queryRemainingNumberOfComparisonSets([global.initialMeshId, global.whiteMeshId]);
   $("#summary").show();
 }
 
@@ -327,7 +364,7 @@ function updateOpenPage() {
   if (global.raterId > 0) {
     loginForm.hide();
     enablePage("eval");
-    enableCompPage();
+    enablePage("comp");
     updateSummary();
   } else {
     disablePage("eval");
@@ -344,74 +381,6 @@ function updateOpenPage() {
       loginForm.hide();
     }
   }
-}
-
-// ----------------------------------------------------------------------------
-// Initialization of overlay colors
-function sqlValueInSet(column, values) {
-  var cond = undefined;
-  if (values instanceof Array) {
-    if (values.length === 1) {
-      return column + " = " + values[0];
-    }
-    var cond = column + " IN (";
-    for (var i = 0; i < values.length; i++) {
-      if (i > 0) cond += ", ";
-      cond += values[i];
-    }
-    cond += ")";
-  } else {
-    cond = column + " = " + values;
-  }
-  return cond;
-}
-
-function queryOverlayColors(evalSetId, overlayId, callback) {
-  global.db.all(`
-    SELECT DISTINCT(Color) AS Color
-    FROM ScreenshotOverlays AS O
-    INNER JOIN EvaluationSets AS E
-      ON O.ScreenshotId = E.ScreenshotId
-    WHERE EvaluationSetId = $evalSetId AND OverlayId = $overlayId`,
-    { $evalSetId: evalSetId, $overlayId: overlayId }, callback);
-}
-
-function queryDistinctOverlayColors(numOverlays, callback) {
-  global.db.all(`
-    SELECT DISTINCT(Color) AS Color
-    FROM Screenshots AS S
-    INNER JOIN EvaluationSets AS E
-      ON S.ScreenshotId = E.ScreenshotId
-    LEFT JOIN ScreenshotOverlays AS O
-      ON S.ScreenshotId = O.ScreenshotId
-    WHERE S.ScreenshotId NOT IN (
-      SELECT ScreenshotId FROM ScreenshotOverlays
-      GROUP BY ScreenshotId
-      HAVING COUNT(DISTINCT OverlayId) <> $numOverlays
-    ) AND S.ScreenshotId NOT IN (
-      SELECT DISTINCT(ScreenshotId) FROM ScreenshotOverlays
-      WHERE OverlayId NOT IN ($initialMeshId, $whiteMeshId)
-    )`, {
-      $initialMeshId: global.initialMeshId,
-      $whiteMeshId: global.whiteMeshId,
-      $numOverlays: numOverlays
-    }, callback);
-}
-
-function enableCompPage() {
-  global.compColors = undefined;
-  queryDistinctOverlayColors(2, function (err, rows) {
-    if (err) {
-      showErrorMessage(err);
-    } else {
-      if (rows.length === 2) {
-        global.compColors = [rows[0]['Color'], rows[1]['Color']];
-      } else {
-        global.compColors = [];
-      }
-      enablePage("comp");
-    }
-  });
 }
 
 // ----------------------------------------------------------------------------
@@ -503,32 +472,34 @@ function queryRemainingNumberOfEvaluationSets() {
     }, setRemainingNumberOfEvaluationSets);
 }
 
-function queryTotalNumberOfComparisonSets() {
+function queryTotalNumberOfComparisonSets(overlayIds) {
+  if (!overlayIds || overlayIds.length == 0) {
+    overlayIds = global.compOverlayIds;
+  }
   global.db.get(`
     SELECT COUNT(DISTINCT A.EvaluationSetId) AS NumTotal FROM EvaluationSets AS A
     INNER JOIN ScreenshotOverlays AS B
     ON A.ScreenshotId = B.ScreenshotId
-      AND B.OverlayId IN ($initialMeshId, $whiteMeshId)
+      AND ` + sqlValueInSet("B.OverlayId", "IN", overlayIds) + `
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
         ON C.ScreenshotId = D.ScreenshotId
-        AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
+        AND ` + sqlValueInSet("D.OverlayId", "NOT IN", overlayIds) + `
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
         INNER JOIN ScreenshotOverlays AS F
         ON E.ScreenshotId = F.ScreenshotId
         GROUP BY EvaluationSetId
-        HAVING COUNT(DISTINCT OverlayId) <> 2
-      )`,
-    {
-      $initialMeshId: global.initialMeshId,
-      $whiteMeshId: global.whiteMeshId
-    }, setTotalNumberOfComparisonSets);
+        HAVING COUNT(DISTINCT OverlayId) <> ` + overlayIds.length + `
+      )`, setTotalNumberOfComparisonSets);
 }
 
-function queryRemainingNumberOfComparisonSets() {
+function queryRemainingNumberOfComparisonSets(overlayIds) {
+  if (!overlayIds || overlayIds.length == 0) {
+    overlayIds = global.compOverlayIds;
+  }
   global.db.get(`
     SELECT COUNT(DISTINCT(A.EvaluationSetId)) AS NumRemaining FROM EvaluationSets AS A
     LEFT JOIN WhiteMatterSurfaceComparison AS S
@@ -540,20 +511,16 @@ function queryRemainingNumberOfComparisonSets() {
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
           ON C.ScreenshotId = D.ScreenshotId
-          AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
+          AND ` + sqlValueInSet("D.OverlayId", "NOT IN", overlayIds) + `
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
         INNER JOIN ScreenshotOverlays AS F
         ON E.ScreenshotId = F.ScreenshotId
         GROUP BY EvaluationSetId
-        HAVING COUNT(DISTINCT OverlayId) <> 2
-      )`,
-    {
-      $initialMeshId: global.initialMeshId,
-      $whiteMeshId: global.whiteMeshId,
-      $raterId: global.raterId
-    }, setRemainingNumberOfComparisonSets);
+        HAVING COUNT(DISTINCT OverlayId) <> ` + overlayIds.length + `
+      )`, { $raterId: global.raterId },
+    setRemainingNumberOfComparisonSets);
 }
 
 function setTotalNumberOfEvaluationSets(err, res) {
@@ -593,34 +560,30 @@ function setRemainingNumberOfComparisonSets(err, res) {
 }
 
 function updatePercentageOfEvaluationSetsDone() {
-  var m_text = $(".eval .remaining").text();
-  var n_text = $(".eval .total").text();
-  if (m_text && n_text) {
-    var m = parseInt($(".eval .remaining").text());
-    var n = parseInt($(".eval .total").text());
+  var m = parseInt($(".eval .remaining").text());
+  var n = parseInt($(".eval .total").text());
+  if (isNaN(m) || isNaN(n)) {
+    $(".eval .done").text('0%');
+  } else {
     var v = (100 - m/n * 100).toFixed(0) + '%';
     if (v == '100%' && activePage() == 'open') {
       v = 'Completed!';
     }
-    $(".eval .done").text(v);
-  } else {
-    $(".eval .done").text('0%');
+    $(".eval .done").text(v);   
   }
 }
 
 function updatePercentageOfComparisonSetsDone() {
-  var m_text = $(".comp .remaining").text();
-  var n_text = $(".comp .total").text();
-  if (m_text && n_text) {
-    var m = parseInt($(".comp .remaining").text());
-    var n = parseInt($(".comp .total").text());
+  var m = parseInt($(".comp .remaining").text());
+  var n = parseInt($(".comp .total").text());
+  if (isNaN(m) || isNaN(n)) {
+    $(".comp .done").text('0%');
+  } else {
     var v = (100 - m/n * 100).toFixed(0) + '%';
     if (v == '100%' && activePage() == 'open') {
       v = 'Completed!';
     }
     $(".comp .done").text(v);
-  } else {
-    $(".comp .done").text('0%');
   }
 }
 
@@ -631,44 +594,42 @@ function getEvalTableName(overlayId) {
   if (overlayId) {
     overlay = overlayId;
   }
-  if (overlay === global.initialMeshId) {
+  if (overlay == global.initialMeshId) {
     return "InitialSurfaceScores";
-  } else if (overlay === global.whiteMeshId) {
+  } else if (overlay == global.whiteMeshId) {
     return "WhiteMatterSurfaceScores";
+  } else if (overlay == global.v2mMeshId) {
+    return "Vol2MeshSurfaceScores";
   } else {
     return null;
   }
 }
 
 function queryRemainingOverlays() {
-  global.db.all(`
-    SELECT DISTINCT(B.OverlayId)
-    FROM EvaluationSets AS A
-    LEFT JOIN ` + getEvalTableName(global.initialMeshId) + ` AS I
-      ON I.EvaluationSetId = A.EvaluationSetId AND I.RaterId = $raterId
-    LEFT JOIN ` + getEvalTableName(global.whiteMeshId) + ` AS W
-      ON W.EvaluationSetId = A.EvaluationSetId AND W.RaterId = $raterId 
-    INNER JOIN ScreenshotOverlays AS B
-      ON A.ScreenshotId = B.ScreenshotId
-      AND ((B.OverlayId = $initialMeshId AND I.PerceptualScore IS NULL) OR
-           (B.OverlayId = $whiteMeshId   AND W.PerceptualScore IS NULL))
-      AND A.EvaluationSetId NOT IN (
-        SELECT EvaluationSetId FROM EvaluationSets AS C
-        INNER JOIN ScreenshotOverlays AS D
-          ON C.ScreenshotId = D.ScreenshotId
-          AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
-      )
-      AND A.EvaluationSetId NOT IN (
-        SELECT EvaluationSetId FROM EvaluationSets AS E
-        INNER JOIN ScreenshotOverlays AS F
-        ON E.ScreenshotId = F.ScreenshotId
-        GROUP BY EvaluationSetId
-        HAVING COUNT(DISTINCT OverlayId) <> 1
-      )`, {
-        $initialMeshId: global.initialMeshId,
-        $whiteMeshId: global.whiteMeshId,
-        $raterId: global.raterId
-      }, queryNextEvaluationSet);
+  var query = "SELECT DISTINCT(B.OverlayId) FROM EvaluationSets AS A"
+  for (var i = 0; i < global.evalOverlayIds.length; i++) {
+    query += " LEFT JOIN " + getEvalTableName(global.evalOverlayIds[i]) + " AS S" + i +
+      " ON S" + i + ".EvaluationSetId = A.EvaluationSetId AND S" + i + ".RaterId = $raterId";
+  }
+  query += " INNER JOIN ScreenshotOverlays AS B ON A.ScreenshotId = B.ScreenshotId AND (";
+  for (var i = 0; i < global.evalOverlayIds.length; i++) {
+    if (i > 0) query += " OR ";
+    query += "(B.OverlayId = " + global.evalOverlayIds[i] + " AND S" + i + ".PerceptualScore IS NULL)";
+  }
+  query += `) AND A.EvaluationSetId NOT IN (
+              SELECT EvaluationSetId FROM EvaluationSets AS C
+              INNER JOIN ScreenshotOverlays AS D
+                ON C.ScreenshotId = D.ScreenshotId
+                AND ` + sqlValueInSet("D.OverlayId", "NOT IN", global.evalOverlayIds) + `
+            )
+            AND A.EvaluationSetId NOT IN (
+              SELECT EvaluationSetId FROM EvaluationSets AS E
+              INNER JOIN ScreenshotOverlays AS F
+              ON E.ScreenshotId = F.ScreenshotId
+              GROUP BY EvaluationSetId
+              HAVING COUNT(DISTINCT OverlayId) <> 1
+            )`;
+  global.db.all(query, { $raterId: global.raterId }, queryNextEvaluationSet);
 }
 
 function queryNextEvaluationSet(err, rows) {
@@ -713,7 +674,6 @@ function showNextEvaluationSet(err, rows) {
     hideActivePage();
     showDoneMessage();
   } else {
-    clearScreenshots();
     global.evalSetId = rows[Math.floor(Math.random() * rows.length)]['NextSetId'];
     global.db.each(`
       SELECT A.ScreenshotId, A.ViewId, A.FileName FROM Screenshots AS A
@@ -724,41 +684,35 @@ function showNextEvaluationSet(err, rows) {
 
 function onEvalPageReady() {
   $("#scores button").click(function (event) {
-    var table = getEvalTableName();
-    saveQualityScore(parseInt(this.id.split('-')[1]), updateEvalPage);
+    var parts = this.id.split('-');
+    var score = parseInt(parts[parts.length-1]);
+    saveQualityScore(score, updateEvalPage);
     event.preventDefault();
+    return false;
   });
   $("html").keyup(function (event) {
     // "1" or [bB]ad
     if (event.which == 49 || event.which == 66) {
       saveQualityScore(1, updateEvalPage);
-      event.preventDefault();
-      return false;
     }
     // "2" or [pP]ad
-    if (event.which == 50 || event.which == 80) {
+    else if (event.which == 50 || event.which == 80) {
       saveQualityScore(2, updateEvalPage);
-      event.preventDefault();
-      return false;
     }
     // "3" or [fF]ir
-    if (event.which == 51 || event.which == 70) {
+    else if (event.which == 51 || event.which == 70) {
       saveQualityScore(3, updateEvalPage);
-      event.preventDefault();
-      return false;
     }
     // "4" or [gG]ood
-    if (event.which == 52 || event.which == 71) {
+    else if (event.which == 52 || event.which == 71) {
       saveQualityScore(4, updateEvalPage);
-      event.preventDefault();
-      return false;
     }
     // "5" or [eE]xcellent
-    if (event.which == 53 || event.which == 69) {
-      saveQualityScore(5, updateEvalPage);
-      event.preventDefault();
-      return false;
+    else if (event.which == 53 || event.which == 69) {
+      saveQualityScore(5, updateEvalPage); 
     }
+    event.preventDefault();
+    return false;
   });
   $("#eval").show();
 }
@@ -776,20 +730,54 @@ function saveQualityScore(score, callback) {
     }, callback);
 }
 
+function initEvalPage() {
+  global.evalOverlayIds = Array.prototype.slice.call(arguments);
+  updateEvalPage();
+}
+
 function updateEvalPage() {
   $("#eval").hide();
+  clearScreenshots();
   queryTotalNumberOfEvaluationSets();
   queryRemainingNumberOfEvaluationSets();
   queryRemainingOverlays();
   $("#eval").show();
 }
 
+function resetEvalPage() {
+  global.evalSetId = 0;
+  global.evalOverlayIds = [];
+}
+
 // ----------------------------------------------------------------------------
 // Comparison of two surfaces
+function queryOverlayColors(compSetId, overlayId, callback) {
+  global.db.all(`
+    SELECT DISTINCT(Color) AS Color
+    FROM ScreenshotOverlays AS O
+    INNER JOIN EvaluationSets AS E
+      ON O.ScreenshotId = E.ScreenshotId
+    WHERE EvaluationSetId = $compSetId AND OverlayId = $overlayId`,
+    { $compSetId: compSetId, $overlayId: overlayId }, callback);
+}
+
+function queryDistinctOverlayColors(compSetId, callback) {
+  global.db.all(`
+    SELECT DISTINCT(Color) AS Color
+    FROM Screenshots AS S
+    INNER JOIN EvaluationSets AS E
+      ON S.ScreenshotId = E.ScreenshotId
+      AND EvaluationSetId = $compSetId
+    LEFT JOIN ScreenshotOverlays AS O
+      ON S.ScreenshotId = O.ScreenshotId
+    ORDER BY Color`,
+    { $compSetId: compSetId }, callback);
+}
+
 function queryNextComparisonSet() {
   global.db.get(`
     SELECT A.EvaluationSetId AS NextSetId FROM EvaluationSets AS A
-    LEFT JOIN WhiteMatterSurfaceComparison AS S
+    LEFT JOIN ` + global.compTableName + ` AS S
       ON S.EvaluationSetId = A.EvaluationSetId AND S.RaterId = $raterId
     INNER JOIN ScreenshotOverlays AS B
       ON A.ScreenshotId = B.ScreenshotId
@@ -798,113 +786,111 @@ function queryNextComparisonSet() {
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
           ON C.ScreenshotId = D.ScreenshotId
-          AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
+          AND ` + sqlValueInSet("D.OverlayId", "NOT IN", global.compOverlayIds) + `
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
         INNER JOIN ScreenshotOverlays AS F
         ON E.ScreenshotId = F.ScreenshotId
         GROUP BY EvaluationSetId
-        HAVING COUNT(DISTINCT OverlayId) <> 2
+        HAVING COUNT(DISTINCT OverlayId) <> ` + global.compOverlayIds.length + `
       )
     GROUP BY A.EvaluationSetId`, {
-      $initialMeshId: global.initialMeshId,
-      $whiteMeshId: global.whiteMeshId,
       $raterId: global.raterId
-    }, showNextComparisonSet);
+    }, queryCompChoiceColors);
 }
 
-function showNextComparisonSet(err, row) {
+function queryCompChoiceColors(err, row) {
   if (err) {
     showErrorMessage(err);
   } else if (row) {
-    clearScreenshots();
     global.compSetId = row['NextSetId'];
-    global.db.each(`
-      SELECT A.ScreenshotId, A.ViewId, A.FileName FROM Screenshots AS A
-      INNER JOIN EvaluationSets AS B ON A.ScreenshotId = B.ScreenshotId AND B.EvaluationSetId = ?
-    `, row['NextSetId'], appendScreenshotAndChangeButtonColors, onScreenshotsRead);
+    queryDistinctOverlayColors(global.compSetId, setCompChoiceColors);
   } else {
     hideActivePage();
     showDoneMessage();
   }
 }
 
-function appendScreenshotAndChangeButtonColors(err, row) {
+function setCompChoiceColors(err, rows) {
   if (err) {
     showErrorMessage(err);
   } else {
-    appendScreenshot(err, row);
-    if (global.compColors.length != 2) {
-      for (let i = 0; i < 2; i++) {
-        global.db.get(`
-          SELECT Color FROM ScreenshotOverlays
-          WHERE ScreenshotId = $screenshotId AND OverlayId = $overlayId`,
-          {
-            $screenshotId: row['ScreenshotId'],
-            $overlayId: global.compOverlayIds[i]
-          },
-          function (err, row) {
-            if (err) {
-              showErrorMessage(err);
-            } else {
-              $("#choice-" + i).css('background-color', row['Color']);
-            }
-          }
-        );
+    global.compColors = [null, null];
+    if (rows.length == 2) {
+      for (var i = 0; i < rows.length; i++) {
+        setCompChoiceColor(i, rows[i]['Color']);
       }
+      showNextComparisonSet(reorderCompOverlayIds);
+    } else {
+      global.compOverlayIds = shuffle(global.compOverlayIds);
+      for (var i = 0; i < global.compOverlayIds.length; i++) {
+        queryOverlayColors(global.compSetId, global.compOverlayIds[i], function (err, rows) {
+          setCompChoiceColor(i, err, rows);
+        });
+      }
+      showNextComparisonSet(onCompPageReady);
     }
   }
 }
 
-function onScreenshotsRead() {
-  if (global.compColors.length == 2) {
-    queryOverlayColors(global.compSetId, global.compOverlayIds[0], function (err, rows) {
-      if (err) {
-        showErrorMessage(err);
-      } else if (rows.length != 1) {
-        showErrorMessage("Contours must have unique and identical color in all screenshots");
-      } else {
-        var color = rows[0]['Color'];
-        var colorA = colorToHex($('#choice-0').css('background-color'));
-        var colorB = colorToHex($('#choice-1').css('background-color'));
-        if (colorA == color || colorB == color) {
-          if (color == colorB) {
-            var overlayId = global.compOverlayIds[0];
-            global.compOverlayIds[0] = global.compOverlayIds[1];
-            global.compOverlayIds[1] = overlayId;
-          }
-          onCompPageReady();
-        } else {
-          var meshName;
-          if (global.compOverlayIds[0] == global.initialMeshId) {
-            meshName = "initial surface";
-          } else {
-            meshName = "white matter surface";
-          }
-          showError("<strong>Internal error:</strong> Colors of buttons A/B do not match color of " +
-            meshName + ", which has color " + color + ", while the colors of button A and B are " +
-            colorA + " and " + colorB + ", respectively!"
-          );
-        }
-      }
-    });
+function setCompChoiceColor(i) {
+  var color = undefined;
+  if (arguments.length == 3) {
+    var err  = arguments[1];
+    var rows = arguments[2];
+    if (err) {
+      showSqlError("Failed to retrieve color of overlay with ID " + global.compOverlayId[i], err);
+    } else if (rows.length != 1) {
+      showErrorMessage("Overlay with ID " + global.compOverlayId[i] + " must have unique color in all shown screenshots");
+    } else {
+      color = rows[0]['Color'];
+    }
   } else {
-    onCompPageReady();
+    color = arguments[1];
   }
+  global.compColors[i] = color;
+  $("#choice-" + i).css('background-color', color);
+}
+
+function showNextComparisonSet(callback) {
+  global.db.each(`
+    SELECT A.ScreenshotId, A.ViewId, A.FileName FROM Screenshots AS A
+    INNER JOIN EvaluationSets AS B ON A.ScreenshotId = B.ScreenshotId AND B.EvaluationSetId = ?
+  `, global.compSetId, appendScreenshot, callback);
+}
+
+function reorderCompOverlayIds() {
+  queryOverlayColors(global.compSetId, global.compOverlayIds[0], function (err, rows) {
+    if (err) {
+      showErrorMessage(err);
+    } else if (rows.length != 1) {
+      showErrorMessage("Contours must have unique and identical color in all screenshots");
+    } else {
+      var color = rows[0]['Color'];
+      var colorA = colorToHex($('#choice-0').css('background-color'));
+      var colorB = colorToHex($('#choice-1').css('background-color'));
+      if (colorA == color || colorB == color) {
+        if (color == colorB) {
+          var overlayId = global.compOverlayIds[0];
+          global.compOverlayIds[0] = global.compOverlayIds[1];
+          global.compOverlayIds[1] = overlayId;
+        }
+        onCompPageReady();
+      } else {
+        showError("<strong>Internal error:</strong> Colors of buttons A/B do not match color of " +
+                  " first overlay, which has color " + color + ", whereas the colors of buttons A and B are " +
+                  colorA + " and " + colorB + ", respectively!");
+      }
+    }
+  });
 }
 
 function onCompPageReady() {
   $("#choice button").click(function (event) {
     var parts = this.id.split('-');
     var choice = parseInt(parts[parts.length-1]);
-    var best = 0;
-    if (choice === 2) {
-      best = 1;
-    } else {
-      best = global.compOverlayIds[choice];
-    }
-    saveBestOverlayChoice(best, updateCompPage);
+    saveBestOverlayChoice(choice, updateCompPage);
     event.preventDefault();
     return false;
   });
@@ -912,21 +898,17 @@ function onCompPageReady() {
     // left arraw or a/A
     if (event.which == 37 || event.which == 65) {
       saveBestOverlayChoice(0, updateCompPage);
-      event.preventDefault();
-      return false;
     }
     // right arraw or b/B
-    if (event.which == 39 || event.which == 66) {
+    else if (event.which == 39 || event.which == 66) {
       saveBestOverlayChoice(1, updateCompPage);
-      event.preventDefault();
-      return false;
     }
     // up/down arraw or n/N
-    if (event.which == 38 || event.which == 40 || event.which == 78) {
+    else if (event.which == 38 || event.which == 40 || event.which == 78) {
       saveBestOverlayChoice(2, updateCompPage);
-      event.preventDefault();
-      return false;
     }
+    event.preventDefault();
+    return false;
   });
   $("#comp").show();
 }
@@ -934,13 +916,12 @@ function onCompPageReady() {
 function saveBestOverlayChoice(choice, callback) {
   $("html").off('keyup');
   $("#choice button").off('click');
-  var bestOverlayId = 0;
-  if (choice === 2) {
-    bestOverlayId = 1;
-  } else {
+  var bestOverlayId = global.neitherMeshId;
+  if (0 <= choice && choice < global.compOverlayIds.length) {
     bestOverlayId = global.compOverlayIds[choice];
   }
-  global.db.run(`INSERT INTO WhiteMatterSurfaceComparison (EvaluationSetId, RaterId, BestOverlayId) VALUES ($set, $rater, $best)`,
+  global.db.run("INSERT INTO " + global.compTableName +
+                " (EvaluationSetId, RaterId, BestOverlayId) VALUES ($set, $rater, $best)",
     {
       $set: global.compSetId,
       $rater: global.raterId,
@@ -948,22 +929,24 @@ function saveBestOverlayChoice(choice, callback) {
     }, callback);
 }
 
-function initCompPage() {
-  if (global.compColors.length == 2) {
-    global.compOverlayIds = [global.initialMeshId, global.whiteMeshId];
-    $("#choice-0").css('background-color', global.compColors[0]);
-    $("#choice-1").css('background-color', global.compColors[1]);
-  }
+function initCompPage(tableName) {
+  global.compTableName = tableName;
+  global.compOverlayIds = Array.prototype.slice.call(arguments, 1);
   updateCompPage();
 }
 
 function updateCompPage() {
   $("#comp").hide();
   $("#choice button").off('click');
-  if (global.compColors.length != 2) {
-    global.compOverlayIds = shuffle(global.compOverlayIds);
-  }
+  clearScreenshots();
   queryTotalNumberOfComparisonSets();
   queryRemainingNumberOfComparisonSets();
   queryNextComparisonSet();
+}
+
+function resetCompPage() {
+  global.compSetId = 0;
+  global.compTableName = '';
+  global.compOverlayIds = [];
+  global.compColors = [];
 }
