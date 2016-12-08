@@ -334,8 +334,8 @@ function updateOpenPage() {
     $("#summary").hide();
     if (global.db) {
       loginForm.off("submit").submit(function(event) {
-        global.db.get("SELECT RaterId, ShowHelp FROM Raters WHERE Email = ? AND Password = ?",
-                      $('#raterEmail').val(), $('#raterPassword').val(), onLogIn);
+        global.db.get("SELECT RaterId, ShowHelp FROM Raters WHERE Email = $email AND Password = $password",
+                      { $email: $('#raterEmail').val(), $password: $('#raterPassword').val() }, onLogIn);
         event.preventDefault();
       });
       loginForm.show();
@@ -371,8 +371,8 @@ function queryOverlayColors(evalSetId, overlayId, callback) {
     FROM ScreenshotOverlays AS O
     INNER JOIN EvaluationSets AS E
       ON O.ScreenshotId = E.ScreenshotId
-    WHERE EvaluationSetId = ? AND OverlayId = ?`,
-    evalSetId, overlayId, callback);
+    WHERE EvaluationSetId = $evalSetId AND OverlayId = $overlayId`,
+    { $evalSetId: evalSetId, $overlayId: overlayId }, callback);
 }
 
 function queryDistinctOverlayColors(numOverlays, callback) {
@@ -386,11 +386,15 @@ function queryDistinctOverlayColors(numOverlays, callback) {
     WHERE S.ScreenshotId NOT IN (
       SELECT ScreenshotId FROM ScreenshotOverlays
       GROUP BY ScreenshotId
-      HAVING COUNT(DISTINCT OverlayId) <> ?
+      HAVING COUNT(DISTINCT OverlayId) <> $numOverlays
     ) AND S.ScreenshotId NOT IN (
       SELECT DISTINCT(ScreenshotId) FROM ScreenshotOverlays
-      WHERE OverlayId NOT IN (` + global.initialMeshId + ', ' + global.whiteMeshId + `)
-    )`, numOverlays, callback);
+      WHERE OverlayId NOT IN ($initialMeshId, $whiteMeshId)
+    )`, {
+      $initialMeshId: global.initialMeshId,
+      $whiteMeshId: global.whiteMeshId,
+      $numOverlays: numOverlays
+    }, callback);
 }
 
 function enableCompPage() {
@@ -447,12 +451,12 @@ function queryTotalNumberOfEvaluationSets() {
     SELECT COUNT(DISTINCT A.EvaluationSetId) AS NumTotal FROM EvaluationSets AS A
     INNER JOIN ScreenshotOverlays AS B
     ON A.ScreenshotId = B.ScreenshotId
-      AND B.OverlayId IN (` + global.initialMeshId + ', ' + global.whiteMeshId + `)
+      AND B.OverlayId IN ($initialMeshId, $whiteMeshId)
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
         ON C.ScreenshotId = D.ScreenshotId
-        AND D.OverlayId NOT IN (` + global.initialMeshId + ', ' + global.whiteMeshId + `)
+        AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
@@ -460,26 +464,29 @@ function queryTotalNumberOfEvaluationSets() {
         ON E.ScreenshotId = F.ScreenshotId
         GROUP BY EvaluationSetId
         HAVING COUNT(DISTINCT OverlayId) <> 1
-      )
-  `, setTotalNumberOfEvaluationSets);
+      )`,
+    {
+      $initialMeshId: global.initialMeshId,
+      $whiteMeshId: global.whiteMeshId
+    }, setTotalNumberOfEvaluationSets);
 }
 
 function queryRemainingNumberOfEvaluationSets() {
   global.db.get(`
     SELECT COUNT(DISTINCT(A.EvaluationSetId)) AS NumRemaining FROM EvaluationSets AS A
     LEFT JOIN ` + getEvalTableName(global.initialMeshId) + ` AS I
-      ON I.EvaluationSetId = A.EvaluationSetId
+      ON I.EvaluationSetId = A.EvaluationSetId AND I.RaterId = $raterId
     LEFT JOIN ` + getEvalTableName(global.whiteMeshId) + ` AS W
-      ON W.EvaluationSetId = A.EvaluationSetId
+      ON W.EvaluationSetId = A.EvaluationSetId AND W.RaterId = $raterId
     INNER JOIN ScreenshotOverlays AS B
       ON A.ScreenshotId = B.ScreenshotId
-      AND ((B.OverlayId = ` + global.initialMeshId + ` AND I.PerceptualScore IS NULL) OR
-           (B.OverlayId = ` + global.whiteMeshId   + ` AND W.PerceptualScore IS NULL))
+      AND ((B.OverlayId = $initialMeshId AND I.PerceptualScore IS NULL) OR
+           (B.OverlayId = $whiteMeshId   AND W.PerceptualScore IS NULL))
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
           ON C.ScreenshotId = D.ScreenshotId
-          AND D.OverlayId NOT IN (` + global.initialMeshId + ', ' + global.whiteMeshId + `)
+          AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
@@ -487,8 +494,12 @@ function queryRemainingNumberOfEvaluationSets() {
         ON E.ScreenshotId = F.ScreenshotId
         GROUP BY EvaluationSetId
         HAVING COUNT(DISTINCT OverlayId) <> 1
-      )
-  `, setRemainingNumberOfEvaluationSets);
+      )`,
+    {
+      $initialMeshId: global.initialMeshId,
+      $whiteMeshId: global.whiteMeshId,
+      $raterId: global.raterId
+    }, setRemainingNumberOfEvaluationSets);
 }
 
 function queryTotalNumberOfComparisonSets() {
@@ -496,12 +507,12 @@ function queryTotalNumberOfComparisonSets() {
     SELECT COUNT(DISTINCT A.EvaluationSetId) AS NumTotal FROM EvaluationSets AS A
     INNER JOIN ScreenshotOverlays AS B
     ON A.ScreenshotId = B.ScreenshotId
-      AND B.OverlayId IN (` + global.initialMeshId + ', ' + global.whiteMeshId + `)
+      AND B.OverlayId IN ($initialMeshId, $whiteMeshId)
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
         ON C.ScreenshotId = D.ScreenshotId
-        AND D.OverlayId NOT IN (` + global.initialMeshId + ', ' + global.whiteMeshId + `)
+        AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
@@ -509,15 +520,18 @@ function queryTotalNumberOfComparisonSets() {
         ON E.ScreenshotId = F.ScreenshotId
         GROUP BY EvaluationSetId
         HAVING COUNT(DISTINCT OverlayId) <> 2
-      )
-  `, setTotalNumberOfComparisonSets);
+      )`,
+    {
+      $initialMeshId: global.initialMeshId,
+      $whiteMeshId: global.whiteMeshId
+    }, setTotalNumberOfComparisonSets);
 }
 
 function queryRemainingNumberOfComparisonSets() {
   global.db.get(`
     SELECT COUNT(DISTINCT(A.EvaluationSetId)) AS NumRemaining FROM EvaluationSets AS A
     LEFT JOIN WhiteMatterSurfaceComparison AS S
-      ON S.EvaluationSetId = A.EvaluationSetId
+      ON S.EvaluationSetId = A.EvaluationSetId AND S.RaterId = $raterId
     INNER JOIN ScreenshotOverlays AS B
       ON A.ScreenshotId = B.ScreenshotId
       AND S.BestOverlayId IS NULL
@@ -525,7 +539,7 @@ function queryRemainingNumberOfComparisonSets() {
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
           ON C.ScreenshotId = D.ScreenshotId
-          AND D.OverlayId NOT IN (` + global.initialMeshId + ', ' + global.whiteMeshId + `)
+          AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
@@ -533,8 +547,12 @@ function queryRemainingNumberOfComparisonSets() {
         ON E.ScreenshotId = F.ScreenshotId
         GROUP BY EvaluationSetId
         HAVING COUNT(DISTINCT OverlayId) <> 2
-      )
-  `, setRemainingNumberOfComparisonSets);
+      )`,
+    {
+      $initialMeshId: global.initialMeshId,
+      $whiteMeshId: global.whiteMeshId,
+      $raterId: global.raterId
+    }, setRemainingNumberOfComparisonSets);
 }
 
 function setTotalNumberOfEvaluationSets(err, res) {
@@ -626,18 +644,18 @@ function queryRemainingOverlays() {
     SELECT DISTINCT(B.OverlayId)
     FROM EvaluationSets AS A
     LEFT JOIN ` + getEvalTableName(global.initialMeshId) + ` AS I
-      ON I.EvaluationSetId = A.EvaluationSetId
+      ON I.EvaluationSetId = A.EvaluationSetId AND I.RaterId = $raterId
     LEFT JOIN ` + getEvalTableName(global.whiteMeshId) + ` AS W
-      ON W.EvaluationSetId = A.EvaluationSetId
+      ON W.EvaluationSetId = A.EvaluationSetId AND W.RaterId = $raterId 
     INNER JOIN ScreenshotOverlays AS B
       ON A.ScreenshotId = B.ScreenshotId
-      AND ((B.OverlayId = ` + global.initialMeshId + ` AND I.PerceptualScore IS NULL) OR
-           (B.OverlayId = ` + global.whiteMeshId   + ` AND W.PerceptualScore IS NULL))
+      AND ((B.OverlayId = $initialMeshId AND I.PerceptualScore IS NULL) OR
+           (B.OverlayId = $whiteMeshId   AND W.PerceptualScore IS NULL))
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
           ON C.ScreenshotId = D.ScreenshotId
-          AND D.OverlayId NOT IN (` + global.initialMeshId + ', ' + global.whiteMeshId + `)
+          AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
@@ -645,8 +663,11 @@ function queryRemainingOverlays() {
         ON E.ScreenshotId = F.ScreenshotId
         GROUP BY EvaluationSetId
         HAVING COUNT(DISTINCT OverlayId) <> 1
-      )
-  `, queryNextEvaluationSet);
+      )`, {
+        $initialMeshId: global.initialMeshId,
+        $whiteMeshId: global.whiteMeshId,
+        $raterId: global.raterId
+      }, queryNextEvaluationSet);
 }
 
 function queryNextEvaluationSet(err, rows) {
@@ -660,15 +681,15 @@ function queryNextEvaluationSet(err, rows) {
     global.db.all(`
       SELECT A.EvaluationSetId AS NextSetId FROM EvaluationSets AS A
       LEFT JOIN ` + getEvalTableName() + ` AS S
-        ON S.EvaluationSetId = A.EvaluationSetId
+        ON S.EvaluationSetId = A.EvaluationSetId AND S.RaterId = $raterId
       INNER JOIN ScreenshotOverlays AS B
         ON A.ScreenshotId = B.ScreenshotId
-        AND (B.OverlayId = ` + global.overlayId + ` AND S.PerceptualScore IS NULL)
+        AND (B.OverlayId = $overlayId AND S.PerceptualScore IS NULL)
         AND A.EvaluationSetId NOT IN (
           SELECT EvaluationSetId FROM EvaluationSets AS C
           INNER JOIN ScreenshotOverlays AS D
             ON C.ScreenshotId = D.ScreenshotId
-            AND D.OverlayId <> ` + global.overlayId + `
+            AND D.OverlayId <> $overlayId
         )
         AND A.EvaluationSetId NOT IN (
           SELECT EvaluationSetId FROM EvaluationSets AS E
@@ -677,8 +698,10 @@ function queryNextEvaluationSet(err, rows) {
           GROUP BY EvaluationSetId
           HAVING COUNT(DISTINCT OverlayId) <> 1
         )
-      GROUP BY A.EvaluationSetId
-    `, showNextEvaluationSet);
+      GROUP BY A.EvaluationSetId`, {
+        $overlayId: global.overlayId,
+        $raterId: global.raterId
+      }, showNextEvaluationSet);
   }
 }
 
@@ -693,8 +716,8 @@ function showNextEvaluationSet(err, rows) {
     global.evalSetId = rows[Math.floor(Math.random() * rows.length)]['NextSetId'];
     global.db.each(`
       SELECT A.ScreenshotId, A.ViewId, A.FileName FROM Screenshots AS A
-      INNER JOIN EvaluationSets AS B ON A.ScreenshotId = B.ScreenshotId AND B.EvaluationSetId = ?
-    `, global.evalSetId, appendScreenshot, onEvalPageReady);
+      INNER JOIN EvaluationSets AS B ON A.ScreenshotId = B.ScreenshotId AND B.EvaluationSetId = $evalSetId
+    `, { $evalSetId: global.evalSetId }, appendScreenshot, onEvalPageReady);
   }
 }
 
@@ -727,7 +750,7 @@ function queryNextComparisonSet() {
   global.db.get(`
     SELECT A.EvaluationSetId AS NextSetId FROM EvaluationSets AS A
     LEFT JOIN WhiteMatterSurfaceComparison AS S
-      ON S.EvaluationSetId = A.EvaluationSetId
+      ON S.EvaluationSetId = A.EvaluationSetId AND S.RaterId = $raterId
     INNER JOIN ScreenshotOverlays AS B
       ON A.ScreenshotId = B.ScreenshotId
       AND S.BestOverlayId IS NULL
@@ -735,7 +758,7 @@ function queryNextComparisonSet() {
         SELECT EvaluationSetId FROM EvaluationSets AS C
         INNER JOIN ScreenshotOverlays AS D
           ON C.ScreenshotId = D.ScreenshotId
-          AND D.OverlayId NOT IN (` + global.initialMeshId + ", " + global.whiteMeshId + `)
+          AND D.OverlayId NOT IN ($initialMeshId, $whiteMeshId)
       )
       AND A.EvaluationSetId NOT IN (
         SELECT EvaluationSetId FROM EvaluationSets AS E
@@ -744,8 +767,11 @@ function queryNextComparisonSet() {
         GROUP BY EvaluationSetId
         HAVING COUNT(DISTINCT OverlayId) <> 2
       )
-    GROUP BY A.EvaluationSetId
-  `, showNextComparisonSet);
+    GROUP BY A.EvaluationSetId`, {
+      $initialMeshId: global.initialMeshId,
+      $whiteMeshId: global.whiteMeshId,
+      $raterId: global.raterId
+    }, showNextComparisonSet);
 }
 
 function showNextComparisonSet(err, row) {
@@ -773,8 +799,11 @@ function appendScreenshotAndChangeButtonColors(err, row) {
       for (let i = 0; i < 2; i++) {
         global.db.get(`
           SELECT Color FROM ScreenshotOverlays
-          WHERE ScreenshotId = ? AND OverlayId = ?`,
-          row['ScreenshotId'], global.compOverlayIds[i],
+          WHERE ScreenshotId = $screenshotId AND OverlayId = $overlayId`,
+          {
+            $screenshotId: row['ScreenshotId'],
+            $overlayId: global.compOverlayIds[i]
+          },
           function (err, row) {
             if (err) {
               showErrorMessage(err);
