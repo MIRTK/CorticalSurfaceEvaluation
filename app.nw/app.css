@@ -1,4 +1,4 @@
-.top-notice {
+#progress {
     margin-top: 20px;
     margin-bottom: 20px;
 }
@@ -13,14 +13,6 @@
     min-width: 100px;
 }
 
-#screenshots {
-    text-align: center;
-}
-
-#screenshots .orthogonal-views {
-    text-align: center;
-}
-
 figure {
     display: inline-block;
     margin-bottom: 4px;
@@ -31,6 +23,10 @@ figure img {
     max-width: 24vw;
     height: 24vh;
     max-height: 24vw;
+}
+
+.center-text {
+    text-align: center;
 }
 
 .borderless td, .borderless th {
