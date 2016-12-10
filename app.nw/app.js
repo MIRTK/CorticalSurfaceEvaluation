@@ -627,9 +627,15 @@ function saveQualityScore(score) {
       INSERT INTO ComparisonChoices (ScreenshotId, RaterId, BestOverlayId)
       SELECT DISTINCT(S.ScreenshotId) AS ScreenshotId, ` + raterId + ` AS RaterId, 0 AS BestOverlayId
       FROM ComparisonScreenshots AS S
+      LEFT JOIN ROIScreenshots AS R
+        ON  R.ROI_Id  = S.ROI_Id
+        AND R.CenterI = S.CenterI
+        AND R.CenterJ = S.CenterJ
+        AND R.CenterK = S.CenterK
+        AND R.ViewId  = S.ViewId
       LEFT JOIN ComparisonChoices AS C
         ON C.ScreenshotId = S.ScreenshotId AND C.RaterId = ` + raterId + `
-      WHERE C.BestOverlayId IS NULL AND S.ROIScreenshotId = ` + roiId + `;
+      WHERE C.BestOverlayId IS NULL AND R.ScreenshotId = ` + roiId + `;
     `;
     query += "END;"
   } else {
