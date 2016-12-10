@@ -22,7 +22,7 @@
 
     <!-- Template: Help page -->
     <template id="helpTemplate">
-      <div class="container theme-showcase">
+      <div id="help" class="container theme-showcase">
       <div class="jumbotron">
         <h1>Cortical Surface Evaluation</h1>
         <p>
@@ -34,64 +34,89 @@
         Thanks for volunteering to evaluate the reconstructed surfaces!
       </p>
       <p>
-        Please use this application to record your scores in the provided database file which you find in the
-        top-level directory of the archive that also contained this application. The file has a <code>.db</code>
-        extension and should be named <mark>recon-neonatal-cortex.db</mark>.
+        Please use this application to record your assessment in the provided database file.
+        This file usually has a <code>.db</code> file name extension, e.g., <mark>recon-neonatal-cortex.db</mark>.
       </p>
       <p>
-        There are two evaluation tasks detailed below. Note that your scores are recorded in the database
-        as soon as a button with your rating is pressed. You can take a break at any point, keep the
-        application window in the background, or close it and open again later.
+        There are two different types of evaluation tasks. The first is to assign quality scores given
+        a screenshot taken from a render of a subregion of the MR brain volume overlaid with exactly
+        one cortical surface contour. The second type of task is the comparison two cortical surface
+        contours produced by different algorithms. For more details regarding each of these tasks,
+        see the two sections below.
       </p>
       <p>
+        Note that scores are recorded in the database as soon as a button is clicked or when the
+        key on your keyboard corresponding to your rating is released again. You can take a break at
+        any point, keep the application window in the background, or close it and open again later.
         Your progress is shown on the "Tasks" page and in the top right corner of each task.
+      </p>
+      <p>
+        Once you have read the help below, switch to the "Tasks" page and start with "Task 1".
       </p>
 
       <h4>Task 1: Rate quality of individual contours</h4>
       <p>
-        The first task is to rate the accuracy with which a given reconstructed surface delineates the
+        The first task is to rate the accuracy with which a given reconstructed cortical surface delineates the
         true boundary between white matter and cortical grey matter. For each brain scan, you will be presented
-        with a number of screenshots taken from small regions of interest (ROIs) that have been pre-selected either
+        with a number of screenshots taken from regions of interest (ROIs) that have been pre-selected either
         based on quantitative criteria such as considerable disagreement between tissue segmentation and reconstructed
-        surface or been chosen randomly. For each ROI, you are shown three orthogonal slices of the T2-weighted
-        brain MR volume with the contour of the reconstructed surface cut by the corresponding image plane overlayed.
-        Note that the surface contours may correspond to either the initial surface reconstructed from the
-        tissue segmentation alone, or the final reonstructed white matter surface. Which one is shown at a time
-        is chosen randomly and both contours are visualised in the same color. This is to avoid bias in the
-        evaluation towards either of the two surfaces.
+        surface or been chosen randomly. In total, there are three orthogonal screenshots from each ROI with
+        the same voxel at the center of the field of view.
+      </p>
+      <figure class="center-text">
+        <img src="assets/evaluate-accuracy.png" alt="Example screenshot of evaluation task" />
+        <figcaption>
+          Figure 1: Example screenshot of the evaluation interface of task 1.
+        </figcaption>
+      </figure>
+      <p>
+        Note that the surface contours may correspond to either one of the cortical surface reconstructed
+        with one of the algorithms that are being compared against each other in this evaluation study.
+        After each rating, you will be presented with a new screenshot randomly chosen from all screenshots
+        taken from any of the MR brain scans included in the study and with any of the surface contours overlaid.
       </p>
       <p>
         Your task is to assign one of the scores listed below by clicking the corresponding button below the
-        screenshots. A brief description of the meaning of each score and when to assign it is given below.
+        screenshots, or by pressing the respective key on your keyboard. A brief description of the meaning of
+        each score and when to assign it is given below.
         <table class="table borderless" id="help-scores">
           <tbody>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-danger" id="test-score-1">1-<strong>B</strong>ad</button></td>
-              <td>Contour follows random, noisy, or other tissue edge.</td>
+              <td><button class="btn btn-sm btn-block btn-danger" id="test-score-0">0-<strong>D</strong>iscard [down]</button></td>
+              <td>Screenshot insufficient to assess quality (e.g., background).</td>
             </tr>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-warning" id="test-score-2">2-<strong>P</strong>oor</button></td>
+              <td><button class="btn btn-sm btn-block btn-warning" id="test-score-1">1-<strong>P</strong>oor [left]</button></td>
               <td>Contour substantially deviates from tissue boundary.</td>
             </tr>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-info" id="test-score-3">3-<strong>F</strong>air</button></td>
+              <td><button class="btn btn-sm btn-block btn-info" id="test-score-2">2-<strong>F</strong>air [up]</button></td>
               <td>Contour close, but mainly not within sub-pixel accuracy.</td>
             </tr>
             <tr>
-              <td><button class="btn btn-sm btn-block btn-primary" id="test-score-4">4-<strong>G</strong>ood</button></td>
-              <td>Contour for the most part correct, but with minor irregularities.</td>
-            </tr>
-            <tr>
-              <td><button class="btn btn-sm btn-block btn-success" id="test-score-5">5-<strong>E</strong>xcellent</button></td>
-              <td>Contour depicts tissue boundary within sub-pixel accuracy.</td>
+              <td><button class="btn btn-sm btn-block btn-primary" id="test-score-3">3-<strong>G</strong>ood [right]</button></td>
+              <td>Contour for the most part correct, with only minor irregularities.</td>
             </tr>
           </tbody>
         </table>
         You can enter the scores by either clicking the respective button, or pressing the key on your keyboard
-        corresponding to the numeric score value, e.g., "3" for "Fair", or by pressing the key corresponding to
-        the first bold highlighted letter of the corresponding verbal score, i.e., "f" for "Fair" and "e" for "Excellent".
-        The labels of the buttons also indicate these corresponding keys.
+        corresponding to the numeric score value, e.g., "2" for "Fair", or by pressing the key corresponding to
+        the first bold highlighted letter of the corresponding verbal score, i.e., "f" for "Fair" and "g" for "Good".
+        Alternatively, use the arrow keys indicated in square brackets, i.e., press the right arrow key to
+        assign the score "Good".
       </p>
+      <div class="card">
+        <div class="card-header" style="background-color: #ffffbb; border-color: #ffffbb;">
+          Discarding screenshots
+        </div>
+        <div class="card-block">
+          When you discard a screenshot as not being suitable to assess the quality of the
+          surface contours, all screenshots with the same field of view from this zoomed in
+          region of interest that were not rated yet are discarded as well. Morover,
+          screenshots for the comparison of two surface contours in the other tasks 
+          taken from the same ROI are then also excluded from these tasks.
+        </div>
+      </div>
       <div class="card">
         <div class="card-header" style="background-color: #ffffbb; border-color: #ffffbb;">
           Note
@@ -106,34 +131,46 @@
         </div>
       </div>
 
-      <h4>Task 2: Which one is better?</h4>
+      <h4>Task 2/3: Which one is better?</h4>
       <p>
-        In this task you are shown volume slice renders with both surfaces overlayed with different colors.
-        The task is to choose which of the two contours depicts the true tissue boundary seen in
-        the MR image better by pressing either the button labeled "A" or the button labeled "B",
-        depending on the color of the button which corresponds to the color of the contour in the
-        images that best depicts the tissue boundary.
-        When both surfaces either delineate the boundary perfectly well or contain comparable
+        In the second and third task, you are shown volume slice renders with two different cortical surfaces
+        obtained using different methods for cortical surface reconstruction. The two contours are
+        of the surfaces intersected with the respective image plane are shown with different colors.
+        To be able to distinguish contours that are present in either both, i.e., only one contour
+        is visible in the comparison view the other is occluded, or only one of the surfaces,
+        there are three screenshots shown: a comparison view with both contours overlaid and
+        two separate screenshots with only one of the two contours shown in each.
+      </p>
+      <figure class="center-text">
+        <img src="assets/compare-contours.png" alt="Example screenshot of comparison task" />
+        <figcaption>
+          Figure 2: Example screenshot of the comparison interface of tasks 2 and 3.
+        </figcaption>
+      </figure>
+      <p>
+        Your task is to choose which of the two differently colored contours depicts the true tissue
+        boundary seen in the MR image more accurately by pressing either the button labeled "A" or
+        the button labeled "B", depending on which button has the color of your choicen contour.
+        When both contours delineate the boundary either perfectly well or contain comparable
         errors, please choose the option "Neither".
       </p>
       <p>
-        You can enter your scores either by clicking the respective button or by pressing the key
+        You can enter your choice either by clicking the respective button or by pressing the key
         on your keyboard corresponding to your choice, i.e., "a" for choice A, "b" for choice B,
-        and "n" for neither choice. Alternativley, use the arrow keys instead: left arrow for choice A,
-        right arrow for choice B, and down/up arrow for neither choice. The labels of the buttons
-        also indicate these corresponding keys.
+        and "n" for neither choice. Alternativley, use left arrow for choice A, the right arrow
+        for choice B, and the down/up arrow for neither choice.
       </p>
       <div class="card">
         <div class="card-header" style="background-color: #ffffbb; border-color: #ffffbb;">
           Note
         </div>
         <div class="card-block">
-          The colors of the contours are picked randomly each time. Also the choice of "A" and "B",
-          respectively, is randomly assigned to either one of the two contours.
-          This is to avoid bias to always vote for choice "A" or "B", respectively.
-          Inspect the images carefully before making a choice.
+          The color of each contour and the assignment of a surface to choice "A" or "B",
+          respectively, is picked randomly each time. This is to avoid bias in your choice.
+          Please, inspect the images carefully before choosing, "A", "B", or "Neither".
         </div>
       </div>
+
       </div>
     </template>
 

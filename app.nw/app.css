@@ -22,7 +22,16 @@
     width: 160px;
 }
 
-figure {
+#help figure {
+    width: 100%;
+}
+
+#help figure img {
+    width: 80%;
+    height: auto;
+}
+
+.eval figure, .comp figure {
     display: inline-block;
     margin-bottom: 4px;
 }
