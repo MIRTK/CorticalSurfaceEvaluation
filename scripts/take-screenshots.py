@@ -236,7 +236,7 @@ def take_screenshots_of_single_roi(args):
         overlays = []
         cur = db.cursor()
         try:
-            for overlay in args.overlay:
+            for overlay in args.overlays:
                 try:
                     overlay_id = int(overlay[0])
                     overlay_name = get_overlay_name(cur, overlay_id)
@@ -252,14 +252,17 @@ def take_screenshots_of_single_roi(args):
             cur.close()
 
         # choose colors
-        if len(overlays) == 1:
+        if args.colors:
+            colors = args.colors
+        elif len(overlays) == 1:
             colors = [single_overlay_color]
-        elif args.use_all_colors:
-            colors = list(multi_overlay_colors)
         else:
-            colors = multi_overlay_colors[0:len(overlays)]
-        if (len(overlays) > len(colors)):
-            raise Exception("Not enough different colors defined to render {} overlays".format(len(overlays)))
+            if args.use_all_colors:
+                colors = list(multi_overlay_colors)
+            else:
+                colors = multi_overlay_colors[0:len(overlays)]
+            if (len(overlays) > len(colors)):
+                raise Exception("Not enough different colors defined to render {} overlays".format(len(overlays)))
         if args.shuffle_colors and len(colors) > 1:
             random.shuffle(colors)
 
@@ -291,7 +294,7 @@ def take_screenshots_of_single_roi(args):
 
         # take screenshots of orthogonal slices of ROI volume with each colored contour alone
         # (this helps to identify whether two contours are simply identical or one has extra lines)
-        if args.individual_overlays:
+        if len(overlays) > 1 and args.individual_overlays:
             if args.verbose > 0:
                 print("Take screenshots of orthogonal slices of ROI volume {} with all overlays".format(args.roi))
             try:
@@ -343,9 +346,13 @@ def call_this_script_for_each_roi(args):
             '--session', args.session,
             '--image', args.image
         ]
-        for overlay in args.overlay:
+        for overlay in args.overlays:
             argv.append('--overlay')
             argv.extend(overlay)
+        if args.colors:
+            for color in args.colors:
+                argv.append('--color')
+                argv.extend(color)
         if args.path_format:
             argv.extend(['--path-format', args.path_format])
         if args.prefix:
@@ -401,7 +408,7 @@ if __name__ == '__main__':
                         help="Session ID", required=True)
     parser.add_argument('--image',
                         help="Image file path", required=True)
-    parser.add_argument('--overlay', nargs=2, metavar=("NAME|ID", "file"), action='append',
+    parser.add_argument('--overlay', dest='overlays', nargs=2, metavar=("NAME|ID", "file"), action='append',
                         help="Polygonal dataset to be rendered on top of image slices")
     parser.add_argument('--path-format',
                         help="Path format string of zoomed in region of interest screenshot files")
@@ -417,6 +424,8 @@ if __name__ == '__main__':
                         help="Number of subdivisions of each ROI half space")
     parser.add_argument('--size', default=(512, 512), nargs=2, type=int,
                         help="Size of screenshots in number of pixels")
+    parser.add_argument('--color', dest='colors', nargs=3, action='append',
+                        help="Color of overlay")
     parser.add_argument('--shuffle-colors', action='store_true',
                         help="Randomly shuffle overlay colors")
     parser.add_argument('--use-all-colors', action='store_true',
