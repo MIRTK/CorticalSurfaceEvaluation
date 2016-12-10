@@ -171,14 +171,20 @@
             </tr>
           </thead>
           <tbody>
-            <tr class="eval" id="eval">
-              <th scope="row"><button class="btn btn-link">Task 1</button></th>
+            <tr class="eval" id="task1">
+              <th scope="row"><button id="task1-link" class="btn btn-link">Task 1</button></th>
               <td class="total">N/A</td>
               <td class="remaining">N/A</td>
               <td><span class="done">N/A</span></td>
             </tr>
-            <tr class="comp" id="comp">
-              <th scope="row"><button class="btn btn-link">Task 2</button></th>
+            <tr class="comp" id="task2">
+              <th scope="row"><button id="task2-link" class="btn btn-link">Task 2</button></th>
+              <td class="total">N/A</td>
+              <td class="remaining">N/A</td>
+              <td><span class="done">N/A</span></td>
+            </tr>
+            <tr class="comp" id="task3">
+              <th scope="row"><button id="task3-link" class="btn btn-link">Task 3</button></th>
               <td class="total">N/A</td>
               <td class="remaining">N/A</td>
               <td><span class="done">N/A</span></td>
@@ -207,7 +213,7 @@
 
     <!-- Template: Surface evaluation -->
     <template id="evalTemplate">
-      <div class="eval collapse" id="eval">
+      <div class="eval collapse">
         <div class="center-text" id="progress">
           <strong><span class="remaining"></strong> remaining<span style="display: none"> out of <span class="total"></span></span>,
           you've rated <span class="done"></span>!
@@ -235,7 +241,7 @@
 
     <!-- Template: Comparison of two surfaces -->
     <template id="compTemplate">
-      <div class="comp collapse" id="comp">
+      <div class="comp collapse">
         <div class="center-text" id="progress">
           <strong><span class="remaining"></strong> remaining<span style="display: none"> out of <span class="total"></span></span>,
           you've rated <span class="done"></span>!

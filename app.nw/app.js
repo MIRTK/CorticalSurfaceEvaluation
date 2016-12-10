@@ -18,6 +18,10 @@ global.initialMeshId = 2;
 global.whiteMeshId   = 3;
 global.v2mMeshId     = 4;
 
+global.overlayIds = {};
+global.overlayIds.task2 = [global.v2mMeshId,     global.whiteMeshId];
+global.overlayIds.task3 = [global.initialMeshId, global.whiteMeshId];
+
 // Current screenshot ID, used to restore page when temporarily switching
 // to other page such as Help or Open summary page
 global.activeScreenshotId = {};
@@ -180,11 +184,15 @@ function hideActivePage() {
   $('#container').hide();
 }
 
-function updatePage(name) {
+function showPage(name) {
+  $("html").off('keyup');
+  $('#container').hide();
   resetCompPage();
   global.activeTaskName = '';
   if (name === "help") {
-    $("#help-scores button").click(function (event) {
+    changeNavLink(name);
+    changeTemplate(name);
+    $("#help-scores button").off("click").click(function (event) {
       var parts = this.id.split('-');
       var score = parts[parts.length-1];
       var title = "You're score is " + score + "!";
@@ -193,20 +201,19 @@ function updatePage(name) {
       alert(title + "\n\n" + msg);
     });
   } else if (name === "open") {
+    changeNavLink(name);
+    changeTemplate(name);
     updateOpenPage();
-  } else if (name === "eval") {
+  } else if (name === "task1") {
+    changeTemplate("eval");
     initEvalPage("task1");
-  } else if (name === "comp") {
-    initCompPage("task2", global.initialMeshId, global.whiteMeshId);
+  } else if (name === "task2") {
+    changeTemplate("comp");
+    initCompPage("task2");
+  } else if (name === "task3") {
+    changeTemplate("comp");
+    initCompPage("task3");
   }
-}
-
-function showPage(name) {
-  $("html").off('keyup');
-  $('#container').hide();
-  changeNavLink(name);
-  changeTemplate(name);
-  updatePage(name);
   $('#container').show();
 }
 
@@ -233,34 +240,23 @@ function disableNavLink(name) {
 }
 
 function enableTask(name) {
-  var selector = '#' + name;
-  $(selector + " .btn").removeClass("disabled");
-  $(selector).off('click', '.btn').on('click', '.btn', function (event) {
-    showPage(name);
-    return false;
-  });
+  var btn = $("#" + name + "-link");
+  btn.off("click");
+  if (global.raterId > 0 && activePage() === "open") {
+    btn.removeClass("disabled");
+    btn.on("click", function (event) {
+      showPage(name);
+      return false;
+    });
+  } else {
+    btn.addClass("disabled");
+  }
 }
 
 function disableTask(name) {
-  var selector = '#' + name;
-  $(selector).off('click', '.btn');
-  $(selector + " .btn").addClass("disabled");
-}
-
-function enablePage(name) {
-  if (name === 'help' || name === 'open') {
-    enableNavLink(name);
-  } else if (global.raterId > 0 && activePage() === "open") {
-    enableTask(name);
-  }
-}
-
-function disablePage(name) {
-  if (name === 'help' || name == 'open') {
-    disableNavLink(name);
-  } else {
-    disableTask(name);
-  }
+  var btn = $("#" + name + "-link");
+  btn.off("click");
+  btn.addClass("disabled");
 }
 
 // ----------------------------------------------------------------------------
@@ -271,10 +267,11 @@ function supportsTemplate() {
 
 if (supportsTemplate()) {
   $(document).ready(function () {
-    enablePage("help");
-    enablePage("open");
-    disablePage("eval");
-    disablePage("comp");
+    enableNavLink("help");
+    enableNavLink("open");
+    disableTask("task1");
+    disableTask("task2");
+    disableTask("task3");
     showPage(startPage);
   });
 } else {
@@ -340,10 +337,15 @@ function clearPasswordField() {
 }
 
 function updateSummary() {
-  queryTotalNumberOfEvaluationSets();
-  queryRemainingNumberOfEvaluationSets();
-  queryTotalNumberOfComparisonSets(global.initialMeshId, global.whiteMeshId);
-  queryRemainingNumberOfComparisonSets(global.initialMeshId, global.whiteMeshId);
+  // Task 1
+  queryTotalNumberOfEvaluationSets    ("task1");
+  queryRemainingNumberOfEvaluationSets("task1");
+  // Task 2
+  queryTotalNumberOfComparisonSets    ("task2");
+  queryRemainingNumberOfComparisonSets("task2");
+  // Task 3
+  queryTotalNumberOfComparisonSets    ("task3");
+  queryRemainingNumberOfComparisonSets("task3");
   $("#summary").show();
 }
 
@@ -368,12 +370,14 @@ function updateOpenPage() {
   loginForm.off("submit");
   if (global.raterId > 0) {
     loginForm.hide();
-    enablePage("eval");
-    enablePage("comp");
+    enableTask("task1");
+    enableTask("task2");
+    enableTask("task3");
     updateSummary();
   } else {
-    disablePage("eval");
-    disablePage("comp");
+    disableTask("task1");
+    disableTask("task2");
+    disableTask("task3");
     $("#summary").hide();
     if (global.db) {
       loginForm.off("submit").submit(function(event) {
@@ -390,6 +394,14 @@ function updateOpenPage() {
 
 // ----------------------------------------------------------------------------
 // Auxiliaries for all task pages
+function getTaskName(task) {
+  if (task) {
+    return task;
+  } else {
+    return global.activeTaskName;
+  }
+}
+
 function setScreenshot(element_id, screenshotId, fileName) {
   var img = $("#" + element_id + " > img");
   var absPath = path.join(global.imgBase, fileName);
@@ -418,12 +430,21 @@ function showDoneMessage() {
 
 // ----------------------------------------------------------------------------
 // Progress for both summary and evaluation pages
-function queryTotalNumberOfEvaluationSets() {
+function queryTotalNumberOfEvaluationSets(task) {
   var query = "SELECT COUNT(ScreenshotId) AS N FROM EvaluationScreenshots";
-  global.db.get(query, setTotalNumberOfEvaluationSets);
+  global.db.get(
+    query,
+    function (err, row) {
+      if (err) {
+        showErrorMessage(err);
+      } else {
+        setTotalNumberOfScreenshots(task, row['N']);
+      }
+    }
+  );
 }
 
-function queryRemainingNumberOfEvaluationSets() {
+function queryRemainingNumberOfEvaluationSets(task) {
   var query = `
     SELECT COUNT(S.ScreenshotId) AS N
     FROM EvaluationScreenshots AS S
@@ -436,18 +457,20 @@ function queryRemainingNumberOfEvaluationSets() {
     {
       $raterId: global.raterId
     },
-    setRemainingNumberOfEvaluationSets);
+    function (err, row) {
+      if (err) {
+        showErrorMessage(err);
+      } else {
+        setRemainingNumberOfScreenshots(task, row['N']);
+      }
+    }
+  );
 }
 
-function queryTotalNumberOfComparisonSets(overlayId1, overlayId2) {
-  var id1, id2;
-  if (arguments.length == 2) {
-    id1 = Math.min(overlayId1, overlayId2);
-    id2 = Math.max(overlayId1, overlayId2);
-  } else {
-    id1 = Math.min(global.compOverlayIds[0], global.compOverlayIds[1]);
-    id2 = Math.max(global.compOverlayIds[0], global.compOverlayIds[1]);
-  }
+function queryTotalNumberOfComparisonSets(task) {
+  var overlayIds = global.overlayIds[getTaskName(task)];
+  var id1 = Math.min(overlayIds[0], overlayIds[1]);
+  var id2 = Math.max(overlayIds[0], overlayIds[1]);
   var query = `
     SELECT COUNT(ScreenshotId) AS N FROM ComparisonScreenshots
     WHERE OverlayId1 = $id1 AND OverlayId2 = $id2
@@ -458,18 +481,20 @@ function queryTotalNumberOfComparisonSets(overlayId1, overlayId2) {
       $id1: id1,
       $id2: id2
     },
-    setTotalNumberOfComparisonSets);
+    function (err, row) {
+      if (err) {
+        showErrorMessage(err);
+      } else {
+        setTotalNumberOfScreenshots(task, row['N']);
+      }
+    }
+  );
 }
 
-function queryRemainingNumberOfComparisonSets(overlayId1, overlayId2) {
-  var id1, id2;
-  if (arguments.length == 2) {
-    id1 = Math.min(overlayId1, overlayId2);
-    id2 = Math.max(overlayId1, overlayId2);
-  } else {
-    id1 = Math.min(global.compOverlayIds[0], global.compOverlayIds[1]);
-    id2 = Math.max(global.compOverlayIds[0], global.compOverlayIds[1]);
-  }
+function queryRemainingNumberOfComparisonSets(task) {
+  var overlayIds = global.overlayIds[getTaskName(task)];
+  var id1 = Math.min(overlayIds[0], overlayIds[1]);
+  var id2 = Math.max(overlayIds[0], overlayIds[1]);
   var query = `
     SELECT COUNT(S.ScreenshotId) AS N
     FROM ComparisonScreenshots AS S
@@ -484,70 +509,38 @@ function queryRemainingNumberOfComparisonSets(overlayId1, overlayId2) {
       $id1: id1,
       $id2: id2
     },
-    setRemainingNumberOfComparisonSets);
+    function (err, row) {
+      if (err) {
+        showErrorMessage(err);
+      } else {
+        setRemainingNumberOfScreenshots(task, row['N']);
+      }
+    }
+  );
 }
 
-function setTotalNumberOfEvaluationSets(err, res) {
-  if (err) {
-    showErrorMessage(err);
-  } else {
-    $(".eval .total").text(res['N'].toString());
-    updatePercentageOfEvaluationSetsDone();
-  }
+function setTotalNumberOfScreenshots(task, num) {
+  $("#" + getTaskName(task) + " .total").text(num.toString());
+  updatePercentageDone(task);
 }
 
-function setRemainingNumberOfEvaluationSets(err, res) {
-  if (err) {
-    showErrorMessage(err);
-  } else {
-    $(".eval .remaining").text(res['N'].toString());
-    updatePercentageOfEvaluationSetsDone();
-  }
+function setRemainingNumberOfScreenshots(task, num) {
+  $("#" + getTaskName(task) + " .remaining").text(num.toString());
+  updatePercentageDone(task);
 }
 
-function setTotalNumberOfComparisonSets(err, res) {
-  if (err) {
-    showErrorMessage(err);
-  } else {
-    $(".comp .total").text(res['N'].toString());
-    updatePercentageOfComparisonSetsDone();
-  }
-}
-
-function setRemainingNumberOfComparisonSets(err, res) {
-  if (err) {
-    showErrorMessage(err);
-  } else {
-    $(".comp .remaining").text(res['N'].toString());
-    updatePercentageOfComparisonSetsDone();
-  }
-}
-
-function updatePercentageOfEvaluationSetsDone() {
-  var m = parseInt($(".eval .remaining").text());
-  var n = parseInt($(".eval .total").text());
+function updatePercentageDone(task) {
+  var taskName = getTaskName(task);
+  var m = parseInt($("#" + taskName + " .remaining").text());
+  var n = parseInt($("#" + taskName + " .total").text());
   if (isNaN(m) || isNaN(n)) {
-    $(".eval .done").text('0%');
+    $("#" + taskName + " .done").text('0%');
   } else {
     var v = (100 - m/n * 100).toFixed(0) + '%';
     if (v == '100%' && activePage() == 'open') {
       v = 'Completed!';
     }
-    $(".eval .done").text(v);   
-  }
-}
-
-function updatePercentageOfComparisonSetsDone() {
-  var m = parseInt($(".comp .remaining").text());
-  var n = parseInt($(".comp .total").text());
-  if (isNaN(m) || isNaN(n)) {
-    $(".comp .done").text('0%');
-  } else {
-    var v = (100 - m/n * 100).toFixed(0) + '%';
-    if (v == '100%' && activePage() == 'open') {
-      v = 'Completed!';
-    }
-    $(".comp .done").text(v);
+    $("#" + taskName + " .done").text(v);   
   }
 }
 
@@ -609,7 +602,7 @@ function showEvalPage() {
     event.preventDefault();
     return false;
   });
-  $("#eval").show();
+  $("#" + global.activeTaskName).show();
 }
 
 function saveQualityScore(score) {
@@ -660,12 +653,13 @@ function onQualityScoreSaved(err) {
 }
 
 function initEvalPage(taskName) {
+  $("#container > div").attr("id", taskName);
   global.activeTaskName = taskName;
   updateEvalPage();
 }
 
 function updateEvalPage() {
-  $("#eval").hide();
+  $("#" + global.activeTaskName).hide();
   queryTotalNumberOfEvaluationSets();
   queryRemainingNumberOfEvaluationSets();
   queryNextEvalScreenshot();
@@ -807,7 +801,7 @@ function onCompPageReady() {
     event.preventDefault();
     return false;
   });
-  $("#comp").show();
+  $("#" + global.activeTaskName).show();
 }
 
 function saveBestOverlayChoice(choice) {
@@ -844,13 +838,14 @@ function onBestOverlayChoiceSaved(err) {
 }
 
 function initCompPage(taskName) {
+  $("#container > div").attr("id", taskName);initEvalPage
   global.activeTaskName = taskName;
-  global.compOverlayIds = Array.prototype.slice.call(arguments, 1);
+  global.compOverlayIds = global.overlayIds[taskName];
   queryCompOverlayColors(updateCompPage);
 }
 
 function updateCompPage() {
-  $("#comp").hide();
+  $("#" + global.activeTaskName).hide();
   queryTotalNumberOfComparisonSets();
   queryRemainingNumberOfComparisonSets();
   queryNextCompScreenshot();
