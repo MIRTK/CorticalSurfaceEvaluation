@@ -13,7 +13,6 @@ global.imgBase = null;
 global.raterId = 0;
 
 // IDs of overlays (see Overlays table)
-global.neitherMeshId = 0;
 global.bboxOverlayId = 1;
 global.initialMeshId = 2;
 global.whiteMeshId   = 3;
@@ -22,6 +21,10 @@ global.v2mMeshId     = 4;
 // Current screenshot ID, used to restore page when temporarily switching
 // to other page such as Help or Open summary page
 global.activeScreenshotId = {};
+
+// Current ROI screenshot ID, used to discard all screenshots corresponding
+// to this region of interest when discarded during the evaluation task
+global.activeROIScreenshotId = {};
 
 // When the comparison set contains just screenshots where only two colors
 // are used for the two overlaid surface contours, these two colors are used
@@ -395,17 +398,12 @@ function setScreenshot(element_id, screenshotId, fileName) {
 
 function setBoundsScreenshot(screenshotId, fileName) {
   setScreenshot("roi-bounds-view", screenshotId, fileName);
+  global.activeROIScreenshotId[global.activeTaskName] = screenshotId;
 }
 
 function setZoomedScreenshot(screenshotId, fileName) {
   setScreenshot("zoomed-roi-view", screenshotId, fileName);
-}
-
-function getScreenshotId() {
-  var img = $("#zoomed-roi-view > img");
-  var id = img.attr('id');
-  var parts = id.split('-');
-  return parseInt(parts[parts.length-1]);
+  global.activeScreenshotId[global.activeTaskName] = screenshotId;
 }
 
 function showDoneMessage() {
@@ -571,7 +569,6 @@ function queryNextEvalScreenshot() {
     if (err) {
       showErrorMessage(err);
     } else if (row) {
-      global.activeScreenshotId[global.activeTaskName] = row['ScreenshotId'];
       setBoundsScreenshot(row['ROIScreenshotId'], row['ROIScreenshotName']);
       setZoomedScreenshot(row['ScreenshotId'], row['FileName']);
       showEvalPage();
@@ -616,20 +613,48 @@ function showEvalPage() {
 function saveQualityScore(score) {
   $("html").off("keyup");
   $("#scores button").off("click");
-  global.db.run("INSERT INTO EvaluationScores (ScreenshotId, RaterId, Score) VALUES ($id, $rater, $score)",
-    {
-      $id: getScreenshotId(),
-      $rater: global.raterId,
-      $score: score
-    }, function (err) {
-      if (err) {
-        hideActivePage();
-        showErrorMessage(err);
-      } else {
-        global.activeScreenshotId[global.activeTaskName] = 0;
-        updateEvalPage();
-      }
-    });
+  var query = '';
+  if (score == 0) {
+    var raterId = global.raterId;
+    var roiId = global.activeROIScreenshotId[global.activeTaskName];
+    query = "BEGIN;";
+    // Discard all screenshots taken from the same ROI
+    query += `
+      INSERT INTO EvaluationScores (ScreenshotId, RaterId, Score)
+      SELECT S.ScreenshotId AS ScreenshotId, ` + raterId + ` AS RaterId, 0 AS Score
+      FROM EvaluationScreenshots AS S
+      LEFT JOIN EvaluationScores AS E
+        ON E.ScreenshotId = S.ScreenshotId AND E.RaterId = ` + raterId + `
+      WHERE E.Score IS NULL AND S.ROIScreenshotId = ` + roiId + `;
+    `;
+    // Set choice of all comparisons within discarded ROI as "Neither"
+    query += `
+      INSERT INTO ComparisonChoices (ScreenshotId, RaterId, BestOverlayId)
+      SELECT S.ScreenshotId AS ScreenshotId, ` + raterId + ` AS RaterId, 0 AS BestOverlayId
+      FROM ComparisonScreenshots AS S
+      LEFT JOIN ComparisonChoices AS C
+        ON C.ScreenshotId = S.ScreenshotId AND C.RaterId = ` + raterId + `
+      WHERE C.BestOverlayId IS NULL AND S.ROIScreenshotId = ` + roiId + `;
+    `;
+    query += "END;"
+  } else {
+    var id = global.activeScreenshotId[global.activeTaskName];
+    query  = "INSERT INTO EvaluationScores (ScreenshotId, RaterId, Score)";
+    query += " VALUES (" + id + ", " + global.raterId + ", " + score + ")";
+  }
+  global.db.exec(query, onQualityScoreSaved);
+}
+
+function onQualityScoreSaved(err) {
+  if (err) {
+    global.db.exec('ROLLBACK;');
+    hideActivePage();
+    showErrorMessage(err);
+  } else {
+    global.activeScreenshotId   [global.activeTaskName] = 0;
+    global.activeROIScreenshotId[global.activeTaskName] = 0;
+    updateEvalPage();
+  }
 }
 
 function initEvalPage(taskName) {
@@ -688,7 +713,6 @@ function queryNextCompScreenshot() {
       LEFT JOIN ComparisonChoices AS C
         ON C.ScreenshotId = S.ScreenshotId AND RaterId = $raterId
       WHERE OverlayId1 = $id1 AND OverlayId2 = $id2 AND BestOverlayId IS NULL
-      
     `;
   if (screenshotId) {
     query += " AND S.ScreenshotId = " + screenshotId;
@@ -746,7 +770,6 @@ function queryNextCompScreenshot() {
           hideActivePage();
           showError(err);
         } else {
-          global.activeScreenshotId[global.activeTaskName] = row['ScreenshotId'];
           setBoundsScreenshot(row['ROIScreenshotId'], row['ROIScreenshotName']);
           setZoomedScreenshot(row['ScreenshotId'], row['FileName']);
           onCompPageReady();
@@ -788,31 +811,34 @@ function onCompPageReady() {
 function saveBestOverlayChoice(choice) {
   $("html").off('keyup');
   $("#choice button").off('click');
-  var bestOverlayId = global.neitherMeshId;
+  var bestOverlayId = 0;
   if (0 <= choice && choice < global.compOverlayIds.length) {
     bestOverlayId = global.compOverlayIds[choice];
   }
   var query = `
     INSERT INTO ComparisonChoices (ScreenshotId, RaterId, BestOverlayId)
-    VALUES ($id, $rater, $best)
+    VALUES ($screenshotId, $raterId, $bestOverlayId)
   `;
   global.db.run(
     query,
     {
-      $id: getScreenshotId(),
-      $rater: global.raterId,
-      $best: bestOverlayId
+      $screenshotId: global.activeScreenshotId[global.activeTaskName],
+      $raterId: global.raterId,
+      $bestOverlayId: bestOverlayId
     },
-    function (err) {
-      if (err) {
-        hideActivePage();
-        showErrorMessage(err);
-      } else {
-        global.activeScreenshotId[global.activeTaskName] = 0;
-        updateCompPage();
-      }
-    }
+    onBestOverlayChoiceSaved
   );
+}
+
+function onBestOverlayChoiceSaved(err) {
+  if (err) {
+    hideActivePage();
+    showErrorMessage(err);
+  } else {
+    global.activeScreenshotId   [global.activeTaskName] = 0;
+    global.activeROIScreenshotId[global.activeTaskName] = 0;
+    updateCompPage();
+  }
 }
 
 function initCompPage(taskName) {
