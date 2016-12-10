@@ -1,10 +1,10 @@
 {
   "name": "CorticalSurfaceEvaluation",
-  "version": "2.0.0",
+  "version": "2.0",
   "description": "App for evaluation of reconstructed neonatal cortical surfaces",
   "main": "index.html",
   "author": "Andreas Schuh",
-  "license": "BSD-2-Clause",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/schuhschuh/CorticalSurfaceEval.git"
