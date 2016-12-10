@@ -56,47 +56,47 @@ VALUES ('I', 'Inferior', 'Inferior view of 3D surface render');
 -- Enumeration of image overlays
 CREATE TABLE Overlays
 (
-    OverlayId INTEGER PRIMARY KEY AUTOINCREMENT,
+    OverlayId INTEGER PRIMARY KEY,
     Name VARCHAR(64) NOT NULL,
     Description VARCHAR(255),
     UNIQUE (Name)
 );
 
-INSERT INTO Overlays (Name, Description)
-VALUES ('Neither',  'The invisible overlay, e.g., choose if neither real overlay is best');
+INSERT INTO Overlays (OverlayId, Name, Description)
+VALUES (0, 'Neither',  'The invisible overlay, e.g., choose if neither real overlay is best');
 
-INSERT INTO Overlays (Name, Description)
-VALUES ('Segmentation boundary',  'The boundary of the white matter segmentation');
+INSERT INTO Overlays (OverlayId, Name, Description)
+VALUES (1, 'ROI Bounds',  'The ROI bounding box of a zoomed in screenshot');
 
-INSERT INTO Overlays (Name, Description)
-VALUES ('Initial surface',  'The initial surface of spherical topology reconstructed using the white matter segmentation');
+INSERT INTO Overlays (OverlayId, Name, Description)
+VALUES (2, 'Initial surface',  'The initial surface of spherical topology reconstructed using the white matter segmentation');
 
-INSERT INTO Overlays (Name, Description)
-VALUES ('White matter surface',  'The white matter surface obtained by deforming the initial surface mesh towards the image edges');
+INSERT INTO Overlays (OverlayId, Name, Description)
+VALUES (3, 'White matter surface',  'The white matter surface obtained by deforming the initial surface mesh towards the image edges');
 
--- Enumeration of perceptual quality scores
-CREATE TABLE PerceptualQuality
+INSERT INTO Overlays (OverlayId, Name, Description)
+VALUES (4, 'Vol2mesh surface', "The white matter surface obtained using Robert's vol2mesh binary");
+
+-- Enumeration of allowed evaluation scores
+CREATE TABLE Scores
 (
-    Score INTEGER PRIMARY KEY,        -- Numeric score value, the higher the better
-    VerbalScore VARCHAR(20) NOT NULL, -- e.g., 'Poor', 'Fair', 'Good',...
-    Description VARCHAR(500),         -- Explanation of when to assign this score
-    UNIQUE (VerbalScore)
+    Value INTEGER PRIMARY KEY,  -- Numeric score value, the higher the better
+    Label VARCHAR(20) NOT NULL, -- Verbal score, e.g., 'Good'
+    Description VARCHAR(500),   -- Explanation of when to assign this score
+    UNIQUE (Label)
 );
 
-INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
-VALUES (1, 'Bad', 'Contour appears to follow random, noisy, or other tissue edge far from target boundary');
+INSERT INTO Scores (Value, Label, Description)
+VALUES (0, 'Discard', 'Field of view seen in screenshot does not allow for a proper scoring');
 
-INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
-VALUES (2, 'Poor', 'Contour substantially deviates from tissue boundary, at least in parts');
+INSERT INTO Scores (Value, Label, Description)
+VALUES (1, 'Poor', 'Contour substantially deviates from tissue boundary, at least in parts');
 
-INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
-VALUES (3, 'Fair', 'Contour close to tissue boundary, but for the most part not with sub-pixel accuracy');
+INSERT INTO Scores (Value, Label, Description)
+VALUES (2, 'Fair', 'Contour close to tissue boundary, but for the most part not with sub-pixel accuracy');
 
-INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
-VALUES (4, 'Good', 'Contour depicts tissue boundary for the most part with only minor irregularities');
-
-INSERT INTO PerceptualQuality (Score, VerbalScore, Description)
-VALUES (5, 'Excellent', 'Contour depicts tissue boundary within sub-pixel accuracy');
+INSERT INTO Scores (Value, Label, Description)
+VALUES (3, 'Good', 'Contour depicts tissue boundary for the most part with only minor irregularities');
 
 ------------------------------------------------------------------------------
 --                             Data tables                                  --
@@ -140,12 +140,15 @@ CREATE TABLE Commands
     UNIQUE (Name, Parameters)
 );
 
--- Table of image regions of interest to be rated
+-- Table of image regions of interest from which screenshots are taken
 --
 -- These regions are extracted automatically based on some measurements
 -- such as distance to segmentation boundary or chosen randomly. The
 -- sampling script should ensure that ROIs do not overlap if not necessary
--- to reduce the number of regions that need to be rated.
+-- to reduce the number of regions, and hence screenshots to be rated.
+--
+-- The center and span of the region in each dimension are given in
+-- world coordinates and mm units, respectively.
 CREATE TABLE ROIs
 (
     ROI_Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,7 +156,7 @@ CREATE TABLE ROIs
     CenterX REAL NOT NULL,
     CenterY REAL NOT NULL,
     CenterZ REAL NOT NULL,
-    Size REAL,
+    Span REAL,
     CommandId INTEGER,
     FOREIGN KEY (ScanId) REFERENCES Scans(ScanId)
     FOREIGN KEY (CommandId) REFERENCES Commands(CommandId)
@@ -161,16 +164,27 @@ CREATE TABLE ROIs
 
 -- Table of screenshots that have been pre-rendered to file
 --
--- A screenshot is rendered from a specific regions of interest
--- listed in the Patches table. A list of optional overlays visible
+-- A screenshot is rendered from a specific region of interest
+-- listed in the ROIs table. A list of optional overlays visible
 -- in the screenshot together with properties used to render these
--- (e.g., the color) is maintained in the ScreenshotOverlays table.
+-- (i.e., color) is given by the ScreenshotOverlays table.
+--
+-- The voxel with indices (CenterI, CenterJ, CenterK) corresponds
+-- to the center point of the image slice, unless the overlay is
+-- the ROI bounding box. In this case, the voxel indices correspond
+-- to the center of the bounding box instead. This is to enable
+-- selecting a screenshot with bounding box overlay where the
+-- bounding box shows the outline of a given screenshot.
+-- See also ROIScreenshots view.
 CREATE TABLE Screenshots
 (
     ScreenshotId INTEGER PRIMARY KEY AUTOINCREMENT,
-    FileName VARCHAR(255) NOT NULL,
     ROI_Id INTEGER,
-    ViewId INTEGER,
+    CenterI INTEGER NOT NULL,
+    CenterJ INTEGER NOT NULL,
+    CenterK INTEGER NOT NULL,
+    ViewId INTEGER NOT NULL,
+    FileName VARCHAR(255) NOT NULL,
     FOREIGN KEY (ROI_Id) REFERENCES ROIs(ROI_Id),
     FOREIGN KEY (ViewId) REFERENCES Views(ViewId),
     UNIQUE (FileName)
@@ -194,59 +208,75 @@ CREATE TABLE ScreenshotOverlays
     FOREIGN KEY (OverlayId) REFERENCES Overlays(OverlayId)
 );
 
--- Table assigning screenshots to evaluation sets
---
--- An evaluation set consists of a set of screenshots that are
--- presented to the rater in one view and based on which the
--- rater assigns their score that summarizes the quality of
--- the result given the different examples. Such evaluation
--- set for example may consist of axial, coronal, and sagittal
--- views of the same ROI showing the same overlays.
-CREATE TABLE EvaluationSets
-(
-    -- Columns
-    ScreenshotId INTEGER NOT NULL,
-    EvaluationSetId INTEGER NOT NULL,
-    -- A screenshot may be shown in a given form at most once
-    PRIMARY KEY (ScreenshotId, EvaluationSetId)
-);
+-- Table of screenshots with only ROI bounding box overlay
+CREATE VIEW ROIScreenshots AS
+SELECT S.*, O1.OverlayId FROM Screenshots AS S
+LEFT JOIN ScreenshotOverlays AS O1 ON O1.ScreenshotId = S.ScreenshotId
+LEFT JOIN ScreenshotOverlays AS O2 ON O2.ScreenshotId = S.ScreenshotId
+    AND O2.OverlayId <> O1.OverlayId
+WHERE O1.OverlayId = 1 AND O2.OverlayId IS NULL;
+
+-- Table of screenshots with exactly one overlay to be evaluated
+CREATE VIEW EvaluationScreenshots AS
+SELECT S.*,
+    O1.OverlayId   AS OverlayId,
+    R.ScreenshotId AS ROIScreenshotId,
+    R.FileName     AS ROIScreenshotName
+FROM Screenshots AS S
+LEFT JOIN ScreenshotOverlays AS O1 ON O1.ScreenshotId = S.ScreenshotId
+LEFT JOIN ScreenshotOverlays AS O2 ON O2.ScreenshotId = S.ScreenshotId
+    AND O2.OverlayId <> O1.OverlayId
+LEFT JOIN ROIScreenshots AS R ON R.ROI_Id = S.ROI_Id
+    AND R.CenterI = S.CenterI
+    AND R.CenterJ = S.CenterJ
+    AND R.CenterK = S.CenterK
+    AND R.ViewId  = S.ViewId
+WHERE O1.OverlayId NOT IN (0, 1) AND O2.OverlayId IS NULL;
+
+-- Table of screenshots with exactly two overlays to compare
+CREATE VIEW ComparisonScreenshots AS
+SELECT S.*,
+    O1.OverlayId   AS OverlayId1,
+    O1.Color       AS Color1,
+    O2.OverlayId   AS OverlayId2,
+    O2.Color       AS Color2,
+    R.ScreenshotId AS ROIScreenshotId,
+    R.FileName     AS ROIScreenshotName
+FROM Screenshots AS S
+LEFT JOIN ScreenshotOverlays AS O1 ON O1.ScreenshotId = S.ScreenshotId
+LEFT JOIN ScreenshotOverlays AS O2 ON O2.ScreenshotId = S.ScreenshotId
+LEFT JOIN ScreenshotOverlays AS O3 ON O3.ScreenshotId = S.ScreenshotId
+    AND O3.OverlayId NOT IN (O1.OverlayId, O2.OverlayId)
+LEFT JOIN ROIScreenshots AS R ON R.ROI_Id = S.ROI_Id
+    AND R.CenterI = S.CenterI
+    AND R.CenterJ = S.CenterJ
+    AND R.CenterK = S.CenterK
+    AND R.ViewId  = S.ViewId
+WHERE O1.OverlayId NOT IN (0, 1) AND O1.OverlayId < O2.OverlayId AND O3.OverlayId IS NULL;
 
 ------------------------------------------------------------------------------
 --                         Evaluation tables                                --
 ------------------------------------------------------------------------------
 
--- Table of initial white matter surface quality ratings
-CREATE TABLE InitialSurfaceScores
+-- Table of single overlay evaluation scores
+CREATE TABLE EvaluationScores
 (
-    EvaluationSetId INTEGER NOT NULL,
+    ScreenshotId INTEGER NOT NULL,
     RaterId INTEGER NOT NULL,
-    PerceptualScore INTEGER,
-    PRIMARY KEY (EvaluationSetId, RaterId),
-    FOREIGN KEY (PerceptualScore) REFERENCES PerceptualQuality(Score)
+    Score INTEGER NOT NULL,
+    PRIMARY KEY (ScreenshotId, RaterId),
+    FOREIGN KEY (ScreenshotId) REFERENCES EvaluationScreenshots(ScreenshotId),
+    FOREIGN KEY (Score) REFERENCES Scores(Value)
 );
 
--- Table of reconstructed white matter surface quality ratings
-CREATE TABLE WhiteMatterSurfaceScores
+-- Table of overlay comparison choices
+CREATE TABLE ComparisonChoices
 (
-    EvaluationSetId INTEGER NOT NULL,
+    ScreenshotId INTEGER NOT NULL,
     RaterId INTEGER NOT NULL,
-    PerceptualScore INTEGER,
-    PRIMARY KEY (EvaluationSetId, RaterId),
-    FOREIGN KEY (PerceptualScore) REFERENCES PerceptualQuality(Score)
-);
-
--- Table of white matter surface quality ratings
-CREATE TABLE WhiteMatterSurfaceComparison
-(
-    -- Columns
-    EvaluationSetId INTEGER NOT NULL,
-    RaterId INTEGER NOT NULL,
-    BestOverlayId INTEGER,
-    -- Each screenshot may be rated by a registered rater no more than once
+    BestOverlayId INTEGER NOT NULL,
+    PRIMARY KEY (ScreenshotId, RaterId),
     FOREIGN KEY (RaterId) REFERENCES Raters(RaterId),
-    PRIMARY KEY (EvaluationSetId, RaterId),
-    -- Each rater must select exactly one best overlay and give it unique score
-    UNIQUE (EvaluationSetId, RaterId, BestOverlayId),
-    -- Selected best overlay must be defined
+    FOREIGN KEY (ScreenshotId) REFERENCES ComparisonScreenshots(ScreenshotId),
     FOREIGN KEY (BestOverlayId) REFERENCES Overlays(OverlayId)
 );

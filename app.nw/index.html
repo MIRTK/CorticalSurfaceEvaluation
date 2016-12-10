@@ -16,12 +16,13 @@
     <div id="alerts">
 
     </div>
-    <div class="container theme-showcase" role="main" id="container">
+    <div role="main" id="container">
       
     </div>
 
     <!-- Template: Help page -->
     <template id="helpTemplate">
+      <div class="container theme-showcase">
       <div class="jumbotron">
         <h1>Cortical Surface Evaluation</h1>
         <p>
@@ -133,10 +134,12 @@
           Inspect the images carefully before making a choice.
         </div>
       </div>
+      </div>
     </template>
 
     <!-- Template: Open database and task overview -->
     <template id="openTemplate">
+      <div class="container theme-showcase">
       <div class="jumbotron">
         <h1>Cortical Surface Evaluation</h1>
         <ol>
@@ -199,6 +202,7 @@
         </div>
         <button type="submit" class="btn btn-primary">Sign in</button>
       </form>
+      </div>
     </template>
 
     <!-- Template: Surface evaluation -->
@@ -208,15 +212,23 @@
           <strong><span class="remaining"></strong> remaining<span style="display: none"> out of <span class="total"></span></span>,
           you've rated <span class="done"></span>!
         </div>
-        <div class="center-text" id="screenshots">
-
+        <div id="screenshots" class="center-text">
+          <figure id="roi-bounds-view">
+            <img />
+          </figure>
+          <figure id="zoomed-roi-view">
+            <img />
+          </figure>
         </div>
-        <div id="scores" class="btn-toolbar score-toolbar">
-          <button id="score-1" type="button" class="btn btn-danger">1-<strong>B</strong>ad</button>
-          <button id="score-2" type="button" class="btn btn-warning">2-<strong>P</strong>oor</button>
-          <button id="score-3" type="button" class="btn btn-info">3-<strong>F</strong>air</button>
-          <button id="score-4" type="button" class="btn btn-primary">4-<strong>G</strong>ood</button>
-          <button id="score-5" type="button" class="btn btn-success">5-<strong>E</strong>xcellent</button>
+        <div id="scores">
+          <div class="btn-toolbar score-toolbar">
+            <button id="score-1" type="button" class="btn btn-warning">1-<strong>P</strong>oor [left]</button>
+            <button id="score-2" type="button" class="btn btn-info">2-<strong>F</strong>air [up]</button>
+            <button id="score-3" type="button" class="btn btn-primary">3-<strong>G</strong>ood [right]</button>
+          </div>
+          <div class="btn-toolbar score-toolbar">
+            <button id="score-0" type="button" class="btn btn-default">0-<strong>D</strong>iscard [down]</button>
+          </div>
         </div>
       </div>
     </template>
@@ -228,10 +240,15 @@
           <strong><span class="remaining"></strong> remaining<span style="display: none"> out of <span class="total"></span></span>,
           you've rated <span class="done"></span>!
         </div>
-        <div id="screenshots">
-
+        <div id="screenshots" class="center-text">
+          <figure id="roi-bounds-view">
+            <img />
+          </figure>
+          <figure id="zoomed-roi-view">
+            <img />
+          </figure>
         </div>
-        <div id="choice" class="btn-toolbar ternary-choice-toolbar">
+        <div id="choice" class="btn-toolbar choice-toolbar">
           <button id="choice-0" type="button" class="btn"><strong>A</strong> [left]</button>
           <button id="choice-2" type="button" class="btn btn-default"><strong>N</strong>either [down]</button>
           <button id="choice-1" type="button" class="btn"><strong>B</strong> [right]</button>
@@ -252,26 +269,6 @@
     <template id="successTemplate">
       <div class="alert alert-success" role="alert" id="msgBox">
         <p id="msg"></p>
-      </div>
-    </template>
-    <template id="screenshotTemplate">
-      <figure>
-        <img src="" />
-        <figcaption>
-        </figcaption>
-      </figure>
-    </template>
-    <template id="orthogonalViewsTemplate">
-      <div class="orthogonal-views center-text">
-        <figure class="A axial">
-          <img src="" alt="" />
-        </figure>
-        <figure class="C coronal">
-          <img src="" alt="" />
-        </figure>
-        <figure class="S sagittal">
-          <img src="" alt="" />
-        </figure>
       </div>
     </template>
 

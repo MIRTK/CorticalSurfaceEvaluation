@@ -193,12 +193,12 @@ def get_number_of_rois(db, scan_id):
 
 def where_rois_overlap():
     """SQLite WHERE expression for selecting those ROIs that overlap with a specified ROI."""
-    return """NOT ((CenterX + Size/2) < :xmin OR
-                   (CenterX - Size/2) > :xmax OR
-                   (CenterY + Size/2) < :ymin OR
-                   (CenterY - Size/2) > :ymax OR
-                   (CenterZ + Size/2) < :zmin OR
-                   (CenterZ - Size/2) > :zmax)"""
+    return """NOT ((CenterX + Span/2) < :xmin OR
+                   (CenterX - Span/2) > :xmax OR
+                   (CenterY + Span/2) < :ymin OR
+                   (CenterY - Span/2) > :ymax OR
+                   (CenterZ + Span/2) < :zmin OR
+                   (CenterZ - Span/2) > :zmax)"""
 
 
 def query_overlapping_rois(db, scan_id, box, cols='*'):
@@ -215,12 +215,12 @@ def query_overlapping_rois(db, scan_id, box, cols='*'):
     )
 
 
-def bounding_box(center, size):
-    """Get extent of ROI given center point and size."""
-    r = max(0., .5 * size)
-    return (center[0] - r, center[0] + r,
-            center[1] - r, center[1] + r,
-            center[2] - r, center[2] + r)
+def bounding_box(center, span):
+    """Get coordinate limits of ROI given center point and side length."""
+    half_span = max(0., .5 * span)
+    return (center[0] - half_span, center[0] + half_span,
+            center[1] - half_span, center[1] + half_span,
+            center[2] - half_span, center[2] + half_span)
 
 
 def compute_volume(box):
@@ -237,17 +237,17 @@ def compute_overlap(box1, vol1, box2, vol2):
     return vol_intersection / vol_union
 
 
-def filter_points(db, scan_id, points, roi_size, max_overlap, max_number_of_points):
+def filter_points(db, scan_id, points, span, max_overlap, max_number_of_points):
     """Filter point set by removing all those with a too large overlap with other ROIs."""
     result = []
     if max_number_of_points == 0:
         return result
     for point in points:
-        box1 = bounding_box(center=point, size=roi_size)
+        box1 = bounding_box(center=point, span=span)
         vol1 = compute_volume(box1)
         keep = True
-        for roi in query_overlapping_rois(db, scan_id, box1, cols='CenterX, CenterY, CenterZ, Size'):
-            box2 = bounding_box(center=(roi[0], roi[1], roi[2]), size=roi[3])
+        for roi in query_overlapping_rois(db, scan_id, box1, cols='CenterX, CenterY, CenterZ, Span'):
+            box2 = bounding_box(center=(roi[0], roi[1], roi[2]), span=roi[3])
             vol2 = compute_volume(box2)
             overlap = compute_overlap(box1, vol1, box2, vol2)
             if overlap > max_overlap:
@@ -260,10 +260,10 @@ def filter_points(db, scan_id, points, roi_size, max_overlap, max_number_of_poin
     return result
 
 
-def insert_roi(db, scan_id, center, size, cmd_id=0, print_sql=False):
+def insert_roi(db, scan_id, center, span, cmd_id=0, print_sql=False):
     """Insert new ROI into database."""
-    sql = "INSERT INTO ROIs (ScanId, CommandId, CenterX, CenterY, CenterZ, Size) VALUES (:scan_id, :cmd_id, :x, :y, :z, :size)"
-    par = dict(scan_id=scan_id, cmd_id=cmd_id, x=center[0], y=center[1], z=center[2], size=size)
+    sql = "INSERT INTO ROIs (ScanId, CommandId, CenterX, CenterY, CenterZ, Span) VALUES (:scan_id, :cmd_id, :x, :y, :z, :span)"
+    par = dict(scan_id=scan_id, cmd_id=cmd_id, x=center[0], y=center[1], z=center[2], span=span)
     if print_sql:
         for key, value in par.items():
             sql = sql.replace(':' + key, str(value))
@@ -290,12 +290,13 @@ if __name__ == '__main__':
     parser.add_argument('--max-scan-rois', default=0, type=int, help="Maximum total number of ROIs for each scan")
     parser.add_argument('--max-overlap', default=50, type=int, help="Maximum overlap between scan ROIs in percentage")
     parser.add_argument('--max-overlap-ratio', default=-1., type=float, help="Maximum overlap between scan ROIs as ratio")
-    parser.add_argument('--roi-size', default=20., type=float, help="Side length of each scan ROI in mm")
+    parser.add_argument('--roi-span', '--roi-size', '--span', dest='span', default=20., type=float,
+                        help="Length of each side of a ROI in mm")
     parser.add_argument('--print-sql', action='store_true', help="Do not insert regions into database, just print SQL statements")
     parser.add_argument('-v', '--verbose', default=0, action='count', help="Verbosity of output messages")
     args = parser.parse_args()
-    if args.roi_size < 0:
-        raise Exception("Invalid --roi-size argument")
+    if args.span < 0:
+        raise Exception("Invalid --roi-span argument")
     if args.min_distance < 0. or args.min_distance > args.max_distance:
         raise Exception("Invalid --min-distance and/or --max-distance arguments: [{}, {}]".format(args.min_distance, args.max_distance))
     if args.max_overlap_ratio < 0.:
@@ -308,7 +309,7 @@ if __name__ == '__main__':
     cmd_id = get_or_insert_command_id(
         cur, name=os.path.basename(__file__), params=options(args, exclude=[
             'database', 'surface', 'reference', 'output',
-            'subject', 'session', 'roi_size', 'max_new_rois', 'max_scan_rois',
+            'subject', 'session', 'max_new_rois', 'max_scan_rois',
             'print_sql', 'verbose'
         ]),
         print_sql=args.print_sql
@@ -330,13 +331,13 @@ if __name__ == '__main__':
         max_new_rois = -1
     if args.max_scan_rois > 0 and args.max_scan_rois - num_scan_rois:
         max_new_rois = max(0, args.max_scan_rois - num_scan_rois)
-    points = filter_points(cur, scan_id=scan_id, points=points, roi_size=args.roi_size,
+    points = filter_points(cur, scan_id=scan_id, points=points, span=args.span,
                            max_overlap=args.max_overlap_ratio, max_number_of_points=max_new_rois)
     if args.verbose > 1:
         print("Selected {} regions of interest".format(len(points)))
     # write selected regions of interest to database
     for p in points:
-        insert_roi(cur, scan_id=scan_id, center=p, size=args.roi_size, cmd_id=cmd_id, print_sql=args.print_sql)
+        insert_roi(cur, scan_id=scan_id, center=p, span=args.span, cmd_id=cmd_id, print_sql=args.print_sql)
     if args.verbose > 0:
         print("Inserted {} new regions of interest".format(len(points)))
 

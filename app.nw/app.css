@@ -3,19 +3,23 @@
     margin-bottom: 20px;
 }
 
-.score-toolbar, .ternary-choice-toolbar {
+.comp .eval {
+    width: 100%;
+    marign: 0;
+}
+
+.score-toolbar, .choice-toolbar {
+    width: 100%;
     margin-top: 20px;
     text-align: center;
 }
 
 .score-toolbar button {
-    width: 10%;
-    min-width: 120px;
+    width: 160px;
 }
 
-.ternary-choice-toolbar button {
-    width: 10%;
-    min-width: 150px;
+.choice-toolbar button {
+    width: 160px;
 }
 
 figure {
@@ -24,10 +28,9 @@ figure {
 }
 
 figure img {
-    width: 24vh;
-    max-width: 24vw;
-    height: 24vh;
-    max-height: 24vw;
+    width: 45vw;
+    max-width: 60vh;
+    height: auto;
 }
 
 .center-text {
