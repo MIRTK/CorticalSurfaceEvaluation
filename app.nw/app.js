@@ -5,22 +5,23 @@ var startPage = "open";
 var contactName = "Andreas Schuh";
 var contactMailTo = "mailto:andreas.schuh@imperial.ac.uk?subject=Neonatal cortex evaluation"
 
-global.neitherMeshId = 0;
-global.bboxOverlayId = 1;
-global.initialMeshId = 2;
-global.whiteMeshId = 3;
-global.v2mMeshId = 4;
-
+// Database and logged in rater
 global.db = null;
 global.dbPrev = null;
 global.dbFile = null;
 global.imgBase = null;
-global.evalSetId = 0;
 global.raterId = 0;
-global.overlayId = 0;
 
-global.compSetId = 0;
-global.compTableName = '';
+// IDs of overlays (see Overlays table)
+global.neitherMeshId = 0;
+global.bboxOverlayId = 1;
+global.initialMeshId = 2;
+global.whiteMeshId   = 3;
+global.v2mMeshId     = 4;
+
+// Current screenshot ID, used to restore page when temporarily switching
+// to other page such as Help or Open summary page
+global.activeScreenshotId = {};
 
 // When the comparison set contains just screenshots where only two colors
 // are used for the two overlaid surface contours, these two colors are used
@@ -178,6 +179,7 @@ function hideActivePage() {
 
 function updatePage(name) {
   resetCompPage();
+  global.activeTaskName = '';
   if (name === "help") {
     $("#help-scores button").click(function (event) {
       var parts = this.id.split('-');
@@ -190,9 +192,9 @@ function updatePage(name) {
   } else if (name === "open") {
     updateOpenPage();
   } else if (name === "eval") {
-    updateEvalPage();
+    initEvalPage("task1");
   } else if (name === "comp") {
-    initCompPage(global.initialMeshId, global.whiteMeshId);
+    initCompPage("task2", global.initialMeshId, global.whiteMeshId);
   }
 }
 
@@ -556,12 +558,18 @@ function queryNextEvalScreenshot() {
     LEFT JOIN EvaluationScores AS E
       ON E.ScreenshotId = S.ScreenshotId AND RaterId = $raterId
     WHERE Score IS NULL
-    ORDER BY random() LIMIT 1
   `;
+  var screenshotId = global.activeScreenshotId[global.activeTaskName];
+  if (screenshotId) {
+    query += " AND S.ScreenshotId = " + screenshotId;
+  } else {
+    query += " ORDER BY random() LIMIT 1";
+  }
   global.db.get(query, { $raterId: global.raterId }, function (err, row) {
     if (err) {
       showErrorMessage(err);
     } else if (row) {
+      global.activeScreenshotId[global.activeTaskName] = row['ScreenshotId'];
       setBoundsScreenshot(row['ROIScreenshotId'], row['ROIScreenshotName']);
       setZoomedScreenshot(row['ScreenshotId'], row['FileName']);
       showEvalPage();
@@ -616,9 +624,15 @@ function saveQualityScore(score) {
         hideActivePage();
         showErrorMessage(err);
       } else {
+        global.activeScreenshotId[global.activeTaskName] = 0;
         updateEvalPage();
       }
     });
+}
+
+function initEvalPage(taskName) {
+  global.activeTaskName = taskName;
+  updateEvalPage();
 }
 
 function updateEvalPage() {
@@ -661,16 +675,22 @@ function queryCompOverlayColors(callback) {
 function queryNextCompScreenshot() {
   var id1 = Math.min(global.compOverlayIds[0], global.compOverlayIds[1]);
   var id2 = Math.max(global.compOverlayIds[0], global.compOverlayIds[1]);
+  var screenshotId = global.activeScreenshotId[global.activeTaskName];
   var query = `
-    SELECT S.ScreenshotId AS ScreenshotId,
-      FileName, OverlayId1, Color1, OverlayId2, Color2,
-      ROIScreenshotId, ROIScreenshotName
-    FROM ComparisonScreenshots AS S
-    LEFT JOIN ComparisonChoices AS C
-      ON C.ScreenshotId = S.ScreenshotId AND RaterId = $raterId
-    WHERE OverlayId1 = $id1 AND OverlayId2 = $id2 AND BestOverlayId IS NULL
-    ORDER BY random() LIMIT 1
-  `;
+      SELECT S.ScreenshotId AS ScreenshotId,
+        FileName, OverlayId1, Color1, OverlayId2, Color2,
+        ROIScreenshotId, ROIScreenshotName
+      FROM ComparisonScreenshots AS S
+      LEFT JOIN ComparisonChoices AS C
+        ON C.ScreenshotId = S.ScreenshotId AND RaterId = $raterId
+      WHERE OverlayId1 = $id1 AND OverlayId2 = $id2 AND BestOverlayId IS NULL
+      
+    `;
+  if (screenshotId) {
+    query += " AND S.ScreenshotId = " + screenshotId;
+  } else {
+    query += "ORDER BY random() LIMIT 1";
+  }
   global.db.get(query, { $raterId: global.raterId, $id1: id1, $id2: id2 }, function (err, row) {
       if (err) {
         hideActivePage();
@@ -709,6 +729,7 @@ function queryNextCompScreenshot() {
           hideActivePage();
           showError(err);
         } else {
+          global.activeScreenshotId[global.activeTaskName] = row['ScreenshotId'];
           setBoundsScreenshot(row['ROIScreenshotId'], row['ROIScreenshotName']);
           setZoomedScreenshot(row['ScreenshotId'], row['FileName']);
           onCompPageReady();
@@ -770,14 +791,16 @@ function saveBestOverlayChoice(choice) {
         hideActivePage();
         showErrorMessage(err);
       } else {
+        global.activeScreenshotId[global.activeTaskName] = 0;
         updateCompPage();
       }
     }
   );
 }
 
-function initCompPage() {
-  global.compOverlayIds = Array.prototype.slice.call(arguments);
+function initCompPage(taskName) {
+  global.activeTaskName = taskName;
+  global.compOverlayIds = Array.prototype.slice.call(arguments, 1);
   queryCompOverlayColors(updateCompPage);
 }
 
