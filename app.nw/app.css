@@ -27,9 +27,15 @@ figure {
     margin-bottom: 4px;
 }
 
-figure img {
+.eval figure img {
     width: 45vw;
     max-width: 60vh;
+    height: auto;
+}
+
+.comp figure img {
+    width: 45vw;
+    max-width: 35vh;
     height: auto;
 }
 

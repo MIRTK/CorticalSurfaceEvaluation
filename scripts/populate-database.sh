@@ -25,6 +25,7 @@ SCREENSHOTS_DIR="$BASE_DIR/{subject}-{session}/screenshots"
 
 MIN_INTENSITY=10
 MAX_INTENSITY=30
+LINE_WIDTH=4
 
 VERBOSE_FLAGS='-v -v'
 
@@ -168,7 +169,7 @@ if [ $n -eq 0 ]; then
       --overlay $INITIAL_SURFACE_ID "$INITIAL_SURFACE" \
       --overlay $WHITE_MATTER_SURFACE_ID "$WHITE_MATTER_SURFACE" \
       --prefix "$SCREENSHOTS_DIR/roi-initial-and-white-matter-surface" \
-      --range $MIN_INTENSITY $MAX_INTENSITY --shuffle-colors \
+      --range $MIN_INTENSITY $MAX_INTENSITY --shuffle-colors --line-width $LINE_WIDTH \
       || exit 1
   n=$(get_number_of_screenshots_with_initial_and_white_matter_surface)
   echo -n "Added"

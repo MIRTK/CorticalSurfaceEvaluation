@@ -13,6 +13,7 @@ import argparse
 import random
 import string
 import subprocess
+import traceback
 
 from vtk import (vtkImageData, vtkPolyData, vtkMatrix4x4, vtkMatrixToLinearTransform,
                  vtkNIFTIImageReader, vtkXMLPolyDataReader)
@@ -26,6 +27,10 @@ def rgb(r, g, b):
 
 
 # Color should be neutral and not relate to colors for scoring buttons.
+# It must further be different from any color used for comparing overlays
+# such that screenshots of a single colored overlay to be compared to
+# another can be distinguished from screenshots meant for assessing the
+# quality of each individual surface.
 single_overlay_color = rgb(255, 245, 61)
 
 # Colors must be distinct enough so that any pair of two colors can be
@@ -145,41 +150,6 @@ def compute_offsets(length, subdiv):
     return offsets
 
 
-# def query_screenshots(db, roi_id=None, view_id=None, center=None, overlays=[], colors=[], cols="*"):
-#     """Query screenshots matching only the given criteria."""
-#     query = "SELECT {} FROM Screenshots AS S".format(', '.join(["S." + col for col in cols]))
-#     if len(overlays) > 0:
-#         query += "INNER JOIN ScreenshotOverlays AS O ON O.ScreenshotId = S.ScreenshotId"
-#     else:
-#         query += "LEFT JOIN ScreenshotOverlays AS O ON O.ScreenshotId = S.ScreenshotId"
-#     if roi_id:
-#         query += " AND ROI_Id = {}".format(roi_id)
-#     if view_id:
-#         query += " AND ViewId = {}".format(view_id)
-#     if center:
-#         query += " AND CenterI = {} AND CenterJ = {} AND CenterK = {}".format(*center)
-#     if len(overlays) > 0:
-#         query += " AND "
-#         if len(overlays) > 1:
-#             query += "(("
-#         for i in xrange(len(overlays)):
-#             if i < len(colors):
-#                 color = color_code(colors[i])
-#             else:
-#                 color = None
-#             if i > 0:
-#                 query += ") OR ("
-#             query += "OverlayId = {}".format(overlays[i])
-#             if color:
-#                 query += " AND Color = " + color
-#             else:
-#                 query += " AND Color IS NULL"
-#         if len(overlays) > 1:
-#             query += "))"
-#     query += "GROUP BY S.ScreenshotId HAVING COUNT(OverlayId) = {}".format(len(overlays))
-#     return db.execute(query).fetchall()
-
-
 def insert_screenshots(db, roi_id, base, screenshots, overlays=[], colors=[], verbose=0):
     """Insert screenshots into database."""
     view_ids = ('S', 'C', 'A')  # zdir=(0: yz-slice, 1: xz-slice, 2: xy-slice)
@@ -294,26 +264,64 @@ def take_screenshots_of_single_roi(args):
             random.shuffle(colors)
 
         # take screenshots of orthogonal slices of ROI volume
-        if args.verbose > 0:
-            print("Take screenshots of orthogonal slices of ROI volume {}".format(args.roi))
-        screenshots = []
-        try:
-            screenshots = take_orthogonal_screenshots(
-                image, level_window=level_window, qform=qform,
-                prefix=prefix, suffix=args.suffix, path_format=path_format,
-                center=center, length=span, offsets=offsets,
-                polydata=[x[2] for x in overlays], colors=colors, line_width=args.line_width,
-                size=args.size, overwrite=False)
-            insert_screenshots(db, roi_id=args.roi, base=base_dir, screenshots=screenshots,
-                               overlays=[x[0] for x in overlays], colors=colors, verbose=(args.verbose - 1))
-        except BaseException as e:
-            for screenshot in screenshots:
-                path = screenshot[0]
-                if os.path.isfile(path):
-                    os.remove(path)
-            raise(e)
-        if args.verbose > 0:
-            print("Saved screenshots of orthogonal slices of ROI volume {}".format(args.roi))
+        if args.all_overlays:
+            if args.verbose > 0:
+                print("Take screenshots of orthogonal slices of ROI volume {} with all overlays".format(args.roi))
+            screenshots = []
+            all_path_format = partial_format(path_format, o=0)
+            try:
+                screenshots = take_orthogonal_screenshots(
+                    image, level_window=level_window, qform=qform,
+                    prefix=prefix, suffix=args.suffix, path_format=all_path_format,
+                    center=center, length=span, offsets=offsets,
+                    polydata=[x[2] for x in overlays], colors=colors, line_width=args.line_width,
+                    size=args.size, overwrite=False)
+                insert_screenshots(db, roi_id=args.roi, base=base_dir, screenshots=screenshots,
+                                   overlays=[x[0] for x in overlays], colors=colors, verbose=(args.verbose - 1))
+            except BaseException as e:
+                for screenshot in screenshots:
+                    path = screenshot[0]
+                    if os.path.isfile(path):
+                        os.remove(path)
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                traceback.print_exception(exc_type, exc_value, exc_traceback)
+                raise(e)
+            if args.verbose > 0:
+                print("Saved screenshots of orthogonal slices of ROI volume {} with all overlays".format(args.roi))
+
+        # take screenshots of orthogonal slices of ROI volume with each colored contour alone
+        # (this helps to identify whether two contours are simply identical or one has extra lines)
+        if args.individual_overlays:
+            if args.verbose > 0:
+                print("Take screenshots of orthogonal slices of ROI volume {} with all overlays".format(args.roi))
+            try:
+                screenshots = []
+                for i in xrange(len(overlays)):
+                    suffix = ['_'.join([str(overlays[i][0]), s]) for s in args.suffix]
+                    if isinstance(args.line_width, int):
+                        line_width = args.line_width
+                    elif i < len(args.line_width):
+                        line_width = args.line_width[i]
+                    else:
+                        line_width = args.line_width[-1]
+                    screenshots = take_orthogonal_screenshots(
+                        image, level_window=level_window, qform=qform,
+                        prefix=prefix, suffix=suffix, path_format=path_format,
+                        center=center, length=span, offsets=offsets,
+                        polydata=[overlays[i][2]], colors=[colors[i]], line_width=line_width,
+                        size=args.size, overwrite=False)
+                    insert_screenshots(db, roi_id=args.roi, base=base_dir, screenshots=screenshots,
+                                       overlays=[overlays[i][0]], colors=[colors[i]], verbose=(args.verbose - 1))
+            except BaseException as e:
+                for screenshot in screenshots:
+                    path = screenshot[0]
+                    if os.path.isfile(path):
+                        os.remove(path)
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                traceback.print_exception(exc_type, exc_value, exc_traceback)
+                raise(e)
+            if args.verbose > 0:
+                print("Saved screenshots of orthogonal slices of ROI volume {} with all overlays".format(args.roi))
     finally:
         db.close()
 
@@ -360,7 +368,15 @@ def call_this_script_for_each_roi(args):
         if args.use_all_colors:
             argv.append('--use-all-colors')
         if args.line_width:
-            argv.extend(['--line-width', args.line_width])
+            argv.append('--line-width')
+            if isinstance(args.line_width, int):
+                argv.append(args.line_width)
+            else:
+                argv.extend(args.line_width)
+        if args.all_overlays:
+            argv.append('--all-overlays')
+        if args.individual_overlays:
+            argv.append('--individual-overlays')
         for i in range(args.verbose):
             argv.append('-v')
         argv = [str(arg) for arg in argv]
@@ -405,11 +421,19 @@ if __name__ == '__main__':
                         help="Randomly shuffle overlay colors")
     parser.add_argument('--use-all-colors', action='store_true',
                         help="Use all available colors for comparison, not only two")
-    parser.add_argument('--line-width', default=4, type=int,
+    parser.add_argument('--line-width', default=4, nargs='+', type=int,
                         help="Width of bounding box outline")
+    parser.add_argument('--all-overlays', action='store_true',
+                        help="Take screenshots with all overlays")
+    parser.add_argument('--individual-overlays', action='store_true',
+                        help="Take screenshots with individual overlays")
     parser.add_argument('-v', '--verbose', default=0, action='count',
                         help="Verbosity of output messages")
     args = parser.parse_args()
+
+    if not args.individual_overlays and not args.all_overlays:
+        args.all_overlays = True
+        args.individual_overlays = True
 
     if args.roi > 0:
         take_screenshots_of_single_roi(args)

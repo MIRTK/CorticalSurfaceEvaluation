@@ -387,16 +387,18 @@ function updateOpenPage() {
 
 // ----------------------------------------------------------------------------
 // Auxiliaries for all task pages
-function setBoundsScreenshot(screenshotId, fileName) {
-  var img = $("#roi-bounds-view > img");
+function setScreenshot(element_id, screenshotId, fileName) {
+  var img = $("#" + element_id + " > img");
   img.attr('id', 'screenshot-' + screenshotId);
   img.attr('src', 'file://' + path.join(global.imgBase, fileName));
 }
 
+function setBoundsScreenshot(screenshotId, fileName) {
+  setScreenshot("roi-bounds-view", screenshotId, fileName);
+}
+
 function setZoomedScreenshot(screenshotId, fileName) {
-  var img = $("#zoomed-roi-view > img");
-  img.attr('id', 'screenshot-' + screenshotId);
-  img.attr('src', 'file://' + path.join(global.imgBase, fileName));
+  setScreenshot("zoomed-roi-view", screenshotId, fileName);
 }
 
 function getScreenshotId() {
@@ -677,8 +679,10 @@ function queryNextCompScreenshot() {
   var id2 = Math.max(global.compOverlayIds[0], global.compOverlayIds[1]);
   var screenshotId = global.activeScreenshotId[global.activeTaskName];
   var query = `
-      SELECT S.ScreenshotId AS ScreenshotId,
-        FileName, OverlayId1, Color1, OverlayId2, Color2,
+      SELECT
+        S.ScreenshotId AS ScreenshotId, FileName,
+        ScreenshotId1, FileName1, OverlayId1, Color1,
+        ScreenshotId2, FileName2, OverlayId2, Color2,
         ROIScreenshotId, ROIScreenshotName
       FROM ComparisonScreenshots AS S
       LEFT JOIN ComparisonChoices AS C
@@ -701,13 +705,21 @@ function queryNextCompScreenshot() {
         var color2 = row['Color2'];
         var overlay1 = row['OverlayId1'];
         var overlay2 = row['OverlayId2'];
+        var screenshotId1 = row['ScreenshotId1'];
+        var screenshotId2 = row['ScreenshotId2'];
+        var fileName1 = row['FileName1'];
+        var fileName2 = row['FileName2'];
         if (global.compColors.length == 2) {
           setCompButtonColor(0, global.compColors[0]);
           setCompButtonColor(1, global.compColors[1]);
           if (global.compColors[0] == color1 && global.compColors[1] == color2) {
             global.compOverlayIds = [overlay1, overlay2];
+            setScreenshot("overlay1-view", screenshotId1, fileName1);
+            setScreenshot("overlay2-view", screenshotId2, fileName2);
           } else if (global.compColors[0] == color2 && global.compColors[1] == color1) {
             global.compOverlayIds = [overlay2, overlay1];
+            setScreenshot("overlay1-view", screenshotId2, fileName2);
+            setScreenshot("overlay2-view", screenshotId1, fileName1);
           } else {
             err = "<strong>Internal error:</strong> Expected overlays to have either color " + global.compColors[0] +
                   " or color " + global.compColors[1] + ", but actual colors are " + color1 + " and " + color2 + " instead!";
@@ -717,9 +729,14 @@ function queryNextCompScreenshot() {
           if (global.compOverlayIds[0] == overlay1 && global.compOverlayIds[1] == overlay2) {
             setCompButtonColor(0, color1);
             setCompButtonColor(1, color2);
+            setScreenshot("overlay1-view", screenshotId1, fileName1);
+            setScreenshot("overlay2-view", screenshotId2, fileName2);
           } else if (global.compOverlayIds[0] == overlay2 && global.compOverlayIds[1] == overlay1) {
             setCompButtonColor(0, color2);
             setCompButtonColor(1, color1);
+            setScreenshot("overlay1-view", screenshotId2, fileName2);
+            setScreenshot("overlay2-view", screenshotId1, fileName1);
+            order = [1, 0];
           } else {
             err = "<strong>Internal error:</strong> Expected overlays to have either color " + global.compColors[0] +
                   " or color " + global.compColors[1] + ", but actual colors are " + color1 + " and " + color2 + " instead!";
