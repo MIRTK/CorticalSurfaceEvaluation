@@ -36,7 +36,7 @@ brew install node npm
 This application was developed with [NW.js](https://nwjs.io/) 0.19.0.
 
 ```
-npm install -g nw nw-gyp nw-builder
+npm install -g nw nw-gyp
 ```
 
 ### Dependencies
@@ -61,26 +61,28 @@ npm install sqlite3 --build-from-source --runtime=node-webkit --target_arch=x64 
 
 Run the following commands from the top-level directory of this project.
 
+```
+npm install -g nw-builder
+node build.js
+```
+
 #### Linux
 
+To create a tar archive for Linux users, run the following additional commands:
 ```
-nwbuild -p linux64 -o linux64 app.nw
-mv linux64/CorticalSurfaceEvaluation/linux64/* linux64/CorticalSurfaceEvaluation/
-rmdir linux64/CorticalSurfaceEvaluation/linux64
-tar -C linux64 -cjf linux64/CorticalSurfaceEvaluation.tar.bz2 CorticalSurfaceEvaluation
-rm -rf linux64/CorticalSurfaceEvaluation  # optional clean up
+rm -f build/release/linux64/CorticalSurfaceEvaluation-linux64.tar.bz2
+cp -r build/release/linux64 CorticalSurfaceEvaluation
+tar -cjf CorticalSurfaceEvaluation-linux64.tar.bz2 CorticalSurfaceEvaluation
+rm -rf CorticalSurfaceEvaluation
+mv CorticalSurfaceEvaluation-linux64.tar.bz2 build/release/linux64/
 ```
 
 #### macOS
 
+To create a dmg file for macOS users, run the following additional commands:
 ```
-brew install appdmg
-nwbuild -p osx64 -o osx64 app.nw
-mv osx64/CorticalSurfaceEvaluation/osx64/CorticalSurfaceEvaluation.app osx64/
-rm -rf osx64/CorticalSurfaceEvaluation
-cp app.nw/app.icns osx64/CorticalSurfaceEvaluation.app/Contents/Resources/app.icns
-cp app.nw/app.icns osx64/CorticalSurfaceEvaluation.app/Contents/Resources/document.icns
-cp app.nw/dmg.json osx64/
-cd osx64 && appdmg dmg.json CorticalSurfaceEvaluation.dmg
-rm -rf CorticalSurfaceEvaluation.app  # optional clean up
+npm install -g appdmg
+cp app.nw/dmg.json build/release/osx64/
+cd build/release/osx64/ && appdmg dmg.json CorticalSurfaceEvaluation.dmg
+rm -f dmg.json
 ```
