@@ -431,7 +431,7 @@ function showDoneMessage() {
 // ----------------------------------------------------------------------------
 // Progress for both summary and evaluation pages
 function queryTotalNumberOfEvaluationSets(task) {
-  var query = "SELECT COUNT(ScreenshotId) AS N FROM EvaluationScreenshots";
+  var query = "SELECT COUNT(DISTINCT(ScreenshotId)) AS N FROM EvaluationScreenshots";
   global.db.get(
     query,
     function (err, row) {
@@ -446,7 +446,7 @@ function queryTotalNumberOfEvaluationSets(task) {
 
 function queryRemainingNumberOfEvaluationSets(task) {
   var query = `
-    SELECT COUNT(S.ScreenshotId) AS N
+    SELECT COUNT(DISTINCT(S.ScreenshotId)) AS N
     FROM EvaluationScreenshots AS S
     LEFT JOIN EvaluationScores AS E
       ON S.ScreenshotId = E.ScreenshotId AND RaterId = $raterId
@@ -472,7 +472,7 @@ function queryTotalNumberOfComparisonSets(task) {
   var id1 = Math.min(overlayIds[0], overlayIds[1]);
   var id2 = Math.max(overlayIds[0], overlayIds[1]);
   var query = `
-    SELECT COUNT(ScreenshotId) AS N FROM ComparisonScreenshots
+    SELECT COUNT(DISTINCT(ScreenshotId)) AS N FROM ComparisonScreenshots
     WHERE OverlayId1 = $id1 AND OverlayId2 = $id2
   `;
   global.db.get(
@@ -496,7 +496,7 @@ function queryRemainingNumberOfComparisonSets(task) {
   var id1 = Math.min(overlayIds[0], overlayIds[1]);
   var id2 = Math.max(overlayIds[0], overlayIds[1]);
   var query = `
-    SELECT COUNT(S.ScreenshotId) AS N
+    SELECT COUNT(DISTINCT(S.ScreenshotId)) AS N
     FROM ComparisonScreenshots AS S
     LEFT JOIN ComparisonChoices AS C
       ON S.ScreenshotId = C.ScreenshotId AND RaterId = $raterId
@@ -625,7 +625,7 @@ function saveQualityScore(score) {
     // Set choice of all comparisons within discarded ROI as "Neither"
     query += `
       INSERT INTO ComparisonChoices (ScreenshotId, RaterId, BestOverlayId)
-      SELECT S.ScreenshotId AS ScreenshotId, ` + raterId + ` AS RaterId, 0 AS BestOverlayId
+      SELECT DISTINCT(S.ScreenshotId) AS ScreenshotId, ` + raterId + ` AS RaterId, 0 AS BestOverlayId
       FROM ComparisonScreenshots AS S
       LEFT JOIN ComparisonChoices AS C
         ON C.ScreenshotId = S.ScreenshotId AND C.RaterId = ` + raterId + `
@@ -677,7 +677,7 @@ function queryCompOverlayColors(callback) {
   var query = `
     SELECT DISTINCT(Color) AS Color FROM ScreenshotOverlays
     WHERE ScreenshotId IN (
-      SELECT ScreenshotId FROM ComparisonScreenshots
+      SELECT DISTINCT(ScreenshotId) FROM ComparisonScreenshots
       WHERE OverlayId1 = $id1 AND OverlayId2 = $id2
     )
     ORDER BY Color
@@ -701,14 +701,37 @@ function queryNextCompScreenshot() {
   var screenshotId = global.activeScreenshotId[global.activeTaskName];
   var query = `
       SELECT
-        S.ScreenshotId AS ScreenshotId, FileName,
-        ScreenshotId1, FileName1, OverlayId1, Color1,
-        ScreenshotId2, FileName2, OverlayId2, Color2,
-        ROIScreenshotId, ROIScreenshotName
+        S.ScreenshotId AS ScreenshotId,
+        S.FileName AS FileName,
+        A.ScreenshotId AS ScreenshotId1,
+        A.FileName AS FileName1,
+        A.OverlayId AS OverlayId1,
+        A.Color AS Color1,
+        B.ScreenshotId AS ScreenshotId2,
+        B.FileName AS FileName2,
+        B.OverlayId AS OverlayId2,
+        B.Color AS Color2,
+        R.ScreenshotId AS ROIScreenshotId,
+        R.FileName AS ROIScreenshotName
       FROM ComparisonScreenshots AS S
+      LEFT JOIN ROIScreenshots AS R
+        ON  R.ROI_Id  = S.ROI_Id
+        AND R.CenterI = S.CenterI
+        AND R.CenterJ = S.CenterJ
+        AND R.CenterK = S.CenterK
+        AND R.ViewId  = S.ViewId
+      LEFT JOIN IndividualComparisonScreenshots AS A
+        ON  A.ROIScreenshotId = R.ScreenshotId
+        AND A.OverlayId       = S.OverlayId1
+        AND A.Color           = S.Color1
+      LEFT JOIN IndividualComparisonScreenshots AS B
+        ON  B.ROIScreenshotId = R.ScreenshotId
+        AND B.OverlayId       = S.OverlayId2
+        AND B.Color           = S.Color2
       LEFT JOIN ComparisonChoices AS C
-        ON C.ScreenshotId = S.ScreenshotId AND RaterId = $raterId
-      WHERE OverlayId1 = $id1 AND OverlayId2 = $id2 AND BestOverlayId IS NULL
+        ON C.ScreenshotId = S.ScreenshotId AND C.RaterId = $raterId
+      WHERE A.OverlayId = $id1 AND B.OverlayId = $id2 AND C.BestOverlayId IS NULL
+      GROUP BY S.ScreenshotId
     `;
   if (screenshotId) {
     query += " AND S.ScreenshotId = " + screenshotId;

@@ -254,35 +254,15 @@ WHERE O1.OverlayId NOT IN (0, 1) AND O1.Color <> '#fff53d' AND O2.OverlayId IS N
 -- Table of screenshots with exactly two overlays to compare
 CREATE VIEW ComparisonScreenshots AS
 SELECT S.*,
-    O1.OverlayId   AS OverlayId1,
-    O1.Color       AS Color1,
-    A.ScreenshotId AS ScreenshotId1,
-    A.FileName     AS FileName1,
-    O2.OverlayId   AS OverlayId2,
-    O2.Color       AS Color2,
-    B.ScreenshotId AS ScreenshotId2,
-    B.FileName     AS FileName2,
-    R.ScreenshotId AS ROIScreenshotId,
-    R.FileName     AS ROIScreenshotName
+    O1.OverlayId AS OverlayId1,
+    O1.Color     AS Color1,
+    O2.OverlayId AS OverlayId2,
+    O2.Color     AS Color2
 FROM Screenshots AS S
 LEFT JOIN ScreenshotOverlays AS O1 ON O1.ScreenshotId = S.ScreenshotId
 LEFT JOIN ScreenshotOverlays AS O2 ON O2.ScreenshotId = S.ScreenshotId
 LEFT JOIN ScreenshotOverlays AS O3 ON O3.ScreenshotId = S.ScreenshotId
     AND O3.OverlayId NOT IN (O1.OverlayId, O2.OverlayId)
-LEFT JOIN ROIScreenshots AS R
-    ON  R.ROI_Id = S.ROI_Id
-    AND R.CenterI  = S.CenterI
-    AND R.CenterJ = S.CenterJ
-    AND R.CenterK = S.CenterK
-    AND R.ViewId  = S.ViewId
-LEFT JOIN IndividualComparisonScreenshots AS A
-    ON  A.ROIScreenshotId = R.ScreenshotId
-    AND A.OverlayId       = O1.OverlayId
-    AND A.Color           = O1.Color
-LEFT JOIN IndividualComparisonScreenshots AS B
-    ON  B.ROIScreenshotId = R.ScreenshotId
-    AND B.OverlayId       = O2.OverlayId
-    AND B.Color           = O2.Color
 WHERE O1.OverlayId NOT IN (0, 1) AND O1.OverlayId < O2.OverlayId AND O3.OverlayId IS NULL;
 
 ------------------------------------------------------------------------------
