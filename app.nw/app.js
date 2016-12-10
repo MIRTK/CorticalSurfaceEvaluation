@@ -392,8 +392,10 @@ function updateOpenPage() {
 // Auxiliaries for all task pages
 function setScreenshot(element_id, screenshotId, fileName) {
   var img = $("#" + element_id + " > img");
-  img.attr('id', 'screenshot-' + screenshotId);
-  img.attr('src', 'file://' + path.join(global.imgBase, fileName));
+  var absPath = path.join(global.imgBase, fileName);
+  img.attr("id", "screenshot-" + screenshotId);
+  img.attr("src", "file://" + absPath);
+  img.attr("alt", "Image not found: " + fileName);
 }
 
 function setBoundsScreenshot(screenshotId, fileName) {
