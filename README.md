@@ -59,30 +59,20 @@ npm install sqlite3 --build-from-source --runtime=node-webkit --target_arch=x64 
 
 ### Build package
 
-Run the following commands from the top-level directory of this project.
-
+An App release package can be build using nw-builder. Additionally, `appdmg` is used
+to create a .dmg file for macOS users. These build dependencies can be installed
+with the following npm commands:
 ```
 npm install -g nw-builder
-node build.js
-```
-
-#### Linux
-
-To create a tar archive for Linux users, run the following additional commands:
-```
-rm -f build/release/linux64/CorticalSurfaceEvaluation-linux64.tar.bz2
-cp -r build/release/linux64 CorticalSurfaceEvaluation
-tar -cjf CorticalSurfaceEvaluation-linux64.tar.bz2 CorticalSurfaceEvaluation
-rm -rf CorticalSurfaceEvaluation
-mv CorticalSurfaceEvaluation-linux64.tar.bz2 build/release/linux64/
-```
-
-#### macOS
-
-To create a dmg file for macOS users, run the following additional commands:
-```
 npm install -g appdmg
-cp app.nw/dmg.json build/release/osx64/
-cd build/release/osx64/ && appdmg dmg.json CorticalSurfaceEvaluation.dmg
-rm -f dmg.json
+```
+
+To create a tar archive for Linux users, run:
+```
+./build.sh linux64
+```
+
+To create a dmg file for macOS users, run:
+```
+./build.sh osx64
 ```
