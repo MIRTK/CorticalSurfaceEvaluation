@@ -14,8 +14,24 @@
     text-align: center;
 }
 
+#scores {
+    display: inline;
+}
+
+#help-scores button {
+    width: 170px;
+    height: 35px;
+    display: block;
+    margin: auto;
+}
+
+#discard-button {
+    margin-top: 10px;
+    width: 100%;
+}
+
 .score-toolbar button {
-    width: 160px;
+    width: 170px;
 }
 
 .choice-toolbar button {

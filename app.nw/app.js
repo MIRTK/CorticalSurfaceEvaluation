@@ -1,10 +1,6 @@
 var path = require('path');
 var sql = require('sqlite3');
 
-var startPage = "open";
-var contactName = "Andreas Schuh";
-var contactMailTo = "mailto:andreas.schuh@imperial.ac.uk?subject=Neonatal cortex evaluation"
-
 // Database and logged in rater
 global.db = null;
 global.dbPrev = null;
@@ -12,23 +8,26 @@ global.dbFile = null;
 global.imgBase = null;
 global.raterId = 0;
 
-// IDs of overlays (see Overlays table)
-global.bboxOverlayId = 1;
-global.initialMeshId = 2;
-global.whiteMeshId   = 3;
-global.v2mMeshId     = 4;
+// Evaluation Scores table entries
+global.evalScores = [];
 
-global.overlayIds = {};
-global.overlayIds.task2 = [global.v2mMeshId,     global.whiteMeshId];
-global.overlayIds.task3 = [global.initialMeshId, global.whiteMeshId];
+// Evaluation tasks and lists of corresponding overlay IDs
+global.evalTaskIds = [];
+global.evalOverlayIds = {};
+
+// Comparison tasks with pairs of overlay IDs
+global.compTaskIds = [];
+global.compOverlayIds = {};
 
 // Current screenshot ID, used to restore page when temporarily switching
 // to other page such as Help or Open summary page
-global.activeScreenshotId = {};
+global.evalScreenshotId = {};
+global.compScreenshotId = {};
 
 // Current ROI screenshot ID, used to discard all screenshots corresponding
 // to this region of interest when discarded during the evaluation task
-global.activeROIScreenshotId = {};
+global.evalROIScreenshotId = {};
+global.compROIScreenshotId = {};
 
 // When the comparison set contains just screenshots where only two colors
 // are used for the two overlaid surface contours, these two colors are used
@@ -37,13 +36,6 @@ global.activeROIScreenshotId = {};
 // this list is empty and the colors of the buttons is set each time to
 // the color of the respective contour, instead.
 global.compColors = [];
-
-// The following array is initialized by initCompPage and either randomly
-// shuffled in place by updateCompPage when multiple colors per overlay
-// are being used, or re-ordered according to the current 2-color assingment
-// of the two overlays. It is used to assign an overlay to one of the
-// two choices, '#choice-0' and '#choice-1' (excl. "Neither").
-global.compOverlayIds = [];
 
 
 // ----------------------------------------------------------------------------
@@ -188,31 +180,21 @@ function showPage(name) {
   $("html").off('keyup');
   $('#container').hide();
   resetCompPage();
-  global.activeTaskName = '';
+  global.activeTask = 0;
   if (name === "help") {
     changeNavLink(name);
     changeTemplate(name);
-    $("#help-scores button").off("click").click(function (event) {
-      var parts = this.id.split('-');
-      var score = parts[parts.length-1];
-      var title = "You're score is " + score + "!";
-      var msg = "Note that this dialog won't be shown during the evaluation."
-              + " It is stored in the database instead.";
-      alert(title + "\n\n" + msg);
-    });
+    updateHelpPage();
   } else if (name === "open") {
     changeNavLink(name);
     changeTemplate(name);
     updateOpenPage();
-  } else if (name === "task1") {
+  } else if (name.substr(0, 5) === "eval-") {
     changeTemplate("eval");
-    initEvalPage("task1");
-  } else if (name === "task2") {
+    initEvalPage(name.split('-')[1]);
+  } else if (name.substr(0, 5) === "comp-") {
     changeTemplate("comp");
-    initCompPage("task2");
-  } else if (name === "task3") {
-    changeTemplate("comp");
-    initCompPage("task3");
+    initCompPage(name.split('-')[1]);
   }
   $('#container').show();
 }
@@ -239,24 +221,23 @@ function disableNavLink(name) {
   $("#nav-" + name).addClass("disabled");
 }
 
-function enableTask(name) {
-  var btn = $("#" + name + "-link");
-  btn.off("click");
-  if (global.raterId > 0 && activePage() === "open") {
-    btn.removeClass("disabled");
-    btn.on("click", function (event) {
-      showPage(name);
-      return false;
-    });
-  } else {
-    btn.addClass("disabled");
+function getMailToLink() {
+  var href = "";
+  if (global.contactEmail) {
+    href += "mailto:" + global.contactEmail;
   }
-}
-
-function disableTask(name) {
-  var btn = $("#" + name + "-link");
-  btn.off("click");
-  btn.addClass("disabled");
+  if (global.contactSubject) {
+    href += "?subject=" + global.contactSubject;
+  }
+  if (global.dbFile) {
+    if (global.contactSubject) {
+      href += "&";
+    } else {
+      href += "?";
+    }
+    href += "body=PLEASE ATTACH FILE: " + global.dbFile;
+  }
+  return href;
 }
 
 // ----------------------------------------------------------------------------
@@ -269,10 +250,7 @@ if (supportsTemplate()) {
   $(document).ready(function () {
     enableNavLink("help");
     enableNavLink("open");
-    disableTask("task1");
-    disableTask("task2");
-    disableTask("task3");
-    showPage(startPage);
+    showPage("open");
   });
 } else {
   showErrorMessage("template HTML tag not supported");
@@ -307,101 +285,267 @@ function openDatabase(db_file) {
   });
 }
 
-function onLogIn(err, row) {
-  if (err) {
-    showErrorMessage(err);
-  } else if (row) {
-    clearErrors();
-    var raterId = row['RaterId'];
-    if (raterId) {
-      global.raterId = raterId;
-      if (row['ShowHelp']) {
-        global.db.run("UPDATE Raters SET ShowHelp = 0 WHERE RaterId = ?", global.raterId, function (err) {
-          if (err) showErrorMessage(err);
-        });
-        showPage("help");
+function onLogIn(event) {
+  global.db.get(
+    "SELECT RaterId, ShowHelp FROM Raters WHERE Email = $email AND Password = $password",
+    {
+      $email: $('#raterEmail').val(),
+      $password: $('#raterPassword').val()
+    },
+    function (err, row) {
+      if (err) {
+        showErrorMessage(err);
+      } else if (!row) {
+        showError("Error: Unknown email address or password not correct.");
       } else {
-        updateOpenPage();
+        clearErrors();
+        global.raterId = row['RaterId'];
+        if (global.raterId) {
+          loadContactInfo(function () {
+          loadOverlayIds(function () {
+          loadEvaluationScores(function () {
+          loadEvaluationTasks(function () {
+          loadComparisonTasks(function () {
+            if (row['ShowHelp']) {
+              global.db.run("UPDATE Raters SET ShowHelp = 0 WHERE RaterId = ?", global.raterId, function (err) {
+                if (err) {
+                  showErrorMessage(err);
+                }
+              });
+              showPage("help");
+            } else {
+              updateOpenPage();
+            }
+          }) }) }) }) });
+        } else {
+          showError("Missing 'RaterId' column in 'Raters' table");
+        }
       }
-    } else {
-      showError("Missing 'RaterId' column in 'Raters' table");
+      clearPasswordField();
     }
-  } else {
-    showError("Error: Unknown email address or password not correct.");
-  }
-  clearPasswordField();
+  );
+  event.preventDefault();
+  return false;
+}
+
+function loadContactInfo(callback) {
+  global.db.get("SELECT * FROM Contacts", function (err, row) {
+    if (err) {
+      showErrorMessage(err);
+    } else if (!row) {
+      global.contactName = "No Contact";
+      global.contactEmail = "";
+      global.contactSubject = "";
+      callback();
+    } else {
+      global.contactName = row["Name"];
+      global.contactEmail = row["Email"];
+      global.contactSubject = row["Subject"];
+      callback();
+    }
+  });
+}
+
+function loadOverlayIds(callback) {
+  global.db.get("SELECT OverlayId FROM Overlays WHERE Name = 'ROI Bounds'", function (err, row) {
+    if (err) {
+      showErrorMessage(err);
+    } else if (!row) {
+      showErrorMessage("Missing 'ROI Bounds' overlay in Overlays table");
+    } else {
+      global.bboxOverlayId = row['OverlayId'];
+      callback();
+    }
+  });
+}
+
+function loadEvaluationScores(callback) {
+  global.db.all("SELECT * FROM Scores ORDER BY Value", function (err, rows) {
+    if (err) {
+      showErrorMessage(err);
+    } else {
+      global.evalScores = [];
+      for (var i = 0; i < rows.length; i++) {
+        score = {};
+        score.value = rows[i]['Value'];
+        score.label = rows[i]['Label'];
+        score.color = rows[i]['Color'];
+        score.descr = rows[i]['Description'];
+        score.keys  = [];
+        var keys = rows[i]['Keys'];
+        if (keys) {
+          codes = keys.split(',');
+          for (var j = 0; j < codes.length; j++) {
+            score.keys.push(parseInt(codes[j]));
+          }
+        }
+        global.evalScores.push(score);
+      }
+      callback();
+    }
+  });
+}
+
+function loadEvaluationTasks(callback) {
+  global.db.all("SELECT * FROM EvaluationTasks", function (err, rows) {
+    if (err) {
+      showErrorMessage(err);
+    } else {
+      global.evalTaskIds = [];
+      global.evalOverlayIds = {};
+      for (var i = 0; i < rows.length; i++) {
+        var taskId = rows[i]['EvaluationTaskId'];
+        if (!global.evalOverlayIds.hasOwnProperty(taskId)) {
+          global.evalTaskIds.push(taskId);
+        }
+        global.evalOverlayIds[taskId] = [];
+      }
+      for (var i = 0; i < rows.length; i++) {
+        var taskId = rows[i]['EvaluationTaskId'];
+        global.evalOverlayIds[taskId].push(rows[i]['OverlayId']);
+      }
+      callback();
+    }
+  });
+}
+
+function loadComparisonTasks(callback) {
+  global.db.all("SELECT * FROM ComparisonTasks", function (err, rows) {
+    if (err) {
+      showErrorMessage(err);
+    } else {
+      global.compTaskIds = [];
+      global.compOverlayIds = {};
+      for (var i = 0; i < rows.length; i++) {
+        var taskId = rows[i]['ComparisonTaskId'];
+        global.compTaskIds.push(taskId);
+        global.compOverlayIds[taskId] = [
+          rows[i]['OverlayId1'],
+          rows[i]['OverlayId2']
+        ];
+      }
+      callback();
+    }
+  });
 }
 
 function clearPasswordField() {
   $("#raterPassword").val("");
 }
 
-function updateSummary() {
-  // Task 1
-  queryTotalNumberOfEvaluationSets    ("task1");
-  queryRemainingNumberOfEvaluationSets("task1");
-  // Task 2
-  queryTotalNumberOfComparisonSets    ("task2");
-  queryRemainingNumberOfComparisonSets("task2");
-  // Task 3
-  queryTotalNumberOfComparisonSets    ("task3");
-  queryRemainingNumberOfComparisonSets("task3");
-  $("#summary").show();
+function addEvalTask(task) {
+  var container = $('#summary tbody');
+  var template = document.querySelector('#taskSummaryTemplate').content;
+  var clone = document.importNode(template, true);
+  container.append($(clone));
+  $("#new-task").attr("id", "eval-" + task);
+  var btn = $("#new-task-link");
+  btn.attr("id", "eval-" + task + "-link");
+  btn.text("Evaluation task " + task);
+  btn.on("click", function (event) {
+    showPage("eval-" + task);
+    return false;
+  });
 }
 
-function getMailToLink() {
-  if (global.dbFile) {
-    return contactMailTo + "&body=PLEASE ATTACH FILE: " + global.dbFile;
-  } else {
-    return contactMailTo;
+function addCompTask(task) {
+  var container = $('#summary tbody');
+  var template = document.querySelector('#taskSummaryTemplate').content;
+  var clone = document.importNode(template, true);
+  container.append($(clone));
+  $("#new-task").attr("id", "comp-" + task);
+  var btn = $("#new-task-link");
+  btn.attr("id", "comp-" + task + "-link");
+  btn.text("Comparison task " + task);
+  btn.on("click", function (event) {
+    showPage("comp-" + task);
+    return false;
+  });
+}
+
+function updateSummary() {
+  $("#summary").hide();
+  $('#summary tbody').empty();
+  if (global.raterId > 0) {
+    for (var i = 0; i < global.evalTaskIds.length; i++) {
+      var task = global.evalTaskIds[i];
+      addEvalTask(task);
+      queryTotalNumberOfEvaluationSets(task);
+      queryRemainingNumberOfEvaluationSets(task);
+    }
+    for (var i = 0; i < global.compTaskIds.length; i++) {
+      var task = global.compTaskIds[i];
+      addCompTask(task);
+      queryTotalNumberOfComparisonSets(task);
+      queryRemainingNumberOfComparisonSets(task);
+    }
+    $("#summary").show();
   }
 }
 
 function updateOpenPage() {
-  $('.contact').text(contactName);
-  if (global.dbFile) {
-    $('#mail').attr('href', getMailToLink());
-    $('#mail').removeClass('disabled');
+  if (global.contactName) {
+    $('#contact-name').text(global.contactName);
+    if (global.contactEmail && global.dbFile) {
+      $('#mailto-link').attr('href', getMailToLink());
+      $('#mailto-link').removeClass('disabled');
+    } else {
+      $('#mailto-link').removeAttr('href');
+      $('#mailto-link').addClass('disabled');
+    }
+    $('#mailto-notice').show();
   } else {
-    $('#mail').removeAttr('href');
-    $('#mail').addClass('disabled');
+    $('#mailto-notice').hide();
   }
   var loginForm = $('#loginForm');
   loginForm.off("submit");
   if (global.raterId > 0) {
     loginForm.hide();
-    enableTask("task1");
-    enableTask("task2");
-    enableTask("task3");
-    updateSummary();
   } else {
-    disableTask("task1");
-    disableTask("task2");
-    disableTask("task3");
-    $("#summary").hide();
     if (global.db) {
-      loginForm.off("submit").submit(function(event) {
-        global.db.get("SELECT RaterId, ShowHelp FROM Raters WHERE Email = $email AND Password = $password",
-                      { $email: $('#raterEmail').val(), $password: $('#raterPassword').val() }, onLogIn);
-        event.preventDefault();
-      });
+      loginForm.off("submit").submit(onLogIn);
       loginForm.show();
     } else {
       loginForm.hide();
     }
   }
+  updateSummary();
+}
+
+function updateHelpPage() {
+  var scoresTable = $("#help-scores tbody");
+  scoresTable.empty();
+  for (var i = 0; i < global.evalScores.length; i++) {
+    var score = global.evalScores[i];
+    var btn = $('<button class="btn btn-block"></button>');
+    btn.attr("id", "test-score-" + score.value);
+    if (score.color) {
+      btn.css("background-color", score.color);
+    } else {
+      btn.addClass("btn-default");
+    }
+    btn.html(getScoreButtonLabel(score));
+    btn.click(function (event) {
+      var parts = this.id.split('-');
+      var score = parts[parts.length-1];
+      var title = "You're score is " + score + "!";
+      var msg = "Note that this dialog won't be shown during the evaluation."
+              + " It is stored in the database instead.";
+      alert(title + "\n\n" + msg);
+    });
+    var cell = $('<td></td>');
+    cell.append(btn);
+    var descr = $("<td></td>");
+    descr.html(score.descr);
+    var row = $("<tr></tr>");
+    row.append(btn);
+    row.append(descr);
+    scoresTable.append(row);
+  }
 }
 
 // ----------------------------------------------------------------------------
 // Auxiliaries for all task pages
-function getTaskName(task) {
-  if (task) {
-    return task;
-  } else {
-    return global.activeTaskName;
-  }
-}
-
 function setScreenshot(element_id, screenshotId, fileName) {
   var img = $("#" + element_id + " > img");
   var absPath = path.join(global.imgBase, fileName);
@@ -412,12 +556,10 @@ function setScreenshot(element_id, screenshotId, fileName) {
 
 function setBoundsScreenshot(screenshotId, fileName) {
   setScreenshot("roi-bounds-view", screenshotId, fileName);
-  global.activeROIScreenshotId[global.activeTaskName] = screenshotId;
 }
 
 function setZoomedScreenshot(screenshotId, fileName) {
   setScreenshot("zoomed-roi-view", screenshotId, fileName);
-  global.activeScreenshotId[global.activeTaskName] = screenshotId;
 }
 
 function showDoneMessage() {
@@ -438,7 +580,9 @@ function queryTotalNumberOfEvaluationSets(task) {
       if (err) {
         showErrorMessage(err);
       } else {
-        setTotalNumberOfScreenshots(task, row['N']);
+        var taskId = task;
+        if (!taskId) taskId = global.activeTask;
+        setTotalNumberOfScreenshots("eval-" + taskId, row['N']);
       }
     }
   );
@@ -461,14 +605,16 @@ function queryRemainingNumberOfEvaluationSets(task) {
       if (err) {
         showErrorMessage(err);
       } else {
-        setRemainingNumberOfScreenshots(task, row['N']);
+        var taskId = task;
+        if (!taskId) taskId = global.activeTask;
+        setRemainingNumberOfScreenshots("eval-" + taskId, row['N']);
       }
     }
   );
 }
 
 function queryTotalNumberOfComparisonSets(task) {
-  var overlayIds = global.overlayIds[getTaskName(task)];
+  var overlayIds = global.compOverlayIds[task];
   var id1 = Math.min(overlayIds[0], overlayIds[1]);
   var id2 = Math.max(overlayIds[0], overlayIds[1]);
   var query = `
@@ -485,14 +631,16 @@ function queryTotalNumberOfComparisonSets(task) {
       if (err) {
         showErrorMessage(err);
       } else {
-        setTotalNumberOfScreenshots(task, row['N']);
+        var taskId = task;
+        if (!taskId) taskId = global.activeTask;
+        setTotalNumberOfScreenshots("comp-" + taskId, row['N']);
       }
     }
   );
 }
 
 function queryRemainingNumberOfComparisonSets(task) {
-  var overlayIds = global.overlayIds[getTaskName(task)];
+  var overlayIds = global.compOverlayIds[task];
   var id1 = Math.min(overlayIds[0], overlayIds[1]);
   var id2 = Math.max(overlayIds[0], overlayIds[1]);
   var query = `
@@ -513,24 +661,25 @@ function queryRemainingNumberOfComparisonSets(task) {
       if (err) {
         showErrorMessage(err);
       } else {
-        setRemainingNumberOfScreenshots(task, row['N']);
+        var taskId = task;
+        if (!taskId) taskId = global.activeTask;
+        setRemainingNumberOfScreenshots("comp-" + taskId, row['N']);
       }
     }
   );
 }
 
-function setTotalNumberOfScreenshots(task, num) {
-  $("#" + getTaskName(task) + " .total").text(num.toString());
-  updatePercentageDone(task);
+function setTotalNumberOfScreenshots(taskName, num) {
+  $("#" + taskName + " .total").text(num.toString());
+  updatePercentageDone(taskName);
 }
 
-function setRemainingNumberOfScreenshots(task, num) {
-  $("#" + getTaskName(task) + " .remaining").text(num.toString());
-  updatePercentageDone(task);
+function setRemainingNumberOfScreenshots(taskName, num) {
+  $("#" + taskName + " .remaining").text(num.toString());
+  updatePercentageDone(taskName);
 }
 
-function updatePercentageDone(task) {
-  var taskName = getTaskName(task);
+function updatePercentageDone(taskName) {
   var m = parseInt($("#" + taskName + " .remaining").text());
   var n = parseInt($("#" + taskName + " .total").text());
   if (isNaN(m) || isNaN(n)) {
@@ -554,7 +703,7 @@ function queryNextEvalScreenshot() {
       ON E.ScreenshotId = S.ScreenshotId AND RaterId = $raterId
     WHERE Score IS NULL
   `;
-  var screenshotId = global.activeScreenshotId[global.activeTaskName];
+  var screenshotId = global.evalScreenshotId[global.activeTask];
   if (screenshotId) {
     query += " AND S.ScreenshotId = " + screenshotId;
   } else {
@@ -566,6 +715,8 @@ function queryNextEvalScreenshot() {
     } else if (row) {
       setBoundsScreenshot(row['ROIScreenshotId'], row['ROIScreenshotName']);
       setZoomedScreenshot(row['ScreenshotId'], row['FileName']);
+      global.evalROIScreenshotId[global.activeTask] = row['ROIScreenshotId'];
+      global.evalScreenshotId   [global.activeTask] = row['ScreenshotId'];
       showEvalPage();
     } else {
       hideActivePage();
@@ -577,32 +728,40 @@ function queryNextEvalScreenshot() {
 function showEvalPage() {
   $("#scores button").click(function (event) {
     var parts = this.id.split('-');
-    var score = parseInt(parts[parts.length-1]);
-    saveQualityScore(score);
+    var value = parseInt(parts[parts.length-1]);
+    saveQualityScore(value);
     event.preventDefault();
     return false;
   });
   $("html").keyup(function (event) {
-    // "0" or [dD]iscard or arrow down
-    if (event.which == 49 || event.which == 68 || event.which == 40) {
-      saveQualityScore(0);
-    }
-    // "1" or [pP]oor or arrow left
-    else if (event.which == 49 || event.which == 80 || event.which == 37) {
-      saveQualityScore(1);
-    }
-    // "2" or [fF]ir or arrow up
-    else if (event.which == 50 || event.which == 70 || event.which == 38) {
-      saveQualityScore(2);
-    }
-    // "3" or [gG]ood or arrow right
-    else if (event.which == 51 || event.which == 71 || event.which == 39) {
-      saveQualityScore(3);
-    }
     event.preventDefault();
+    for (var i = 0; i < global.evalScores.length; i++) {
+      var score = global.evalScores[i];
+      // 0..9
+      if (48 <= event.which && event.which <= 57) {
+        if (event.which - 48 == score.value) {
+          saveQualityScore(score.value);
+          return false;
+        }
+      }
+      // A..Z
+      else if (65 <= event.which && event.which <= 90) {
+        if (score.label.charAt(0).toUpperCase().charCodeAt(0) == event.which) {
+          saveQualityScore(score.value);
+          return false;
+        }
+      }
+      // custom key, e.g., arrow key
+      for (var j = 0; j < score.keys.length; j++) {
+        if (event.which == score.keys[j]) {
+          saveQualityScore(score.value);
+          return false;
+        }
+      }
+    }
     return false;
   });
-  $("#" + global.activeTaskName).show();
+  $("#eval-" + global.activeTask).show();
 }
 
 function saveQualityScore(score) {
@@ -611,7 +770,7 @@ function saveQualityScore(score) {
   var query = '';
   if (score == 0) {
     var raterId = global.raterId;
-    var roiId = global.activeROIScreenshotId[global.activeTaskName];
+    var roiId = global.evalROIScreenshotId[global.activeTask];
     query = "BEGIN;";
     // Discard all screenshots taken from the same ROI
     query += `
@@ -639,7 +798,7 @@ function saveQualityScore(score) {
     `;
     query += "END;"
   } else {
-    var id = global.activeScreenshotId[global.activeTaskName];
+    var id = global.evalScreenshotId[global.activeTask];
     query  = "INSERT INTO EvaluationScores (ScreenshotId, RaterId, Score)";
     query += " VALUES (" + id + ", " + global.raterId + ", " + score + ")";
   }
@@ -652,20 +811,54 @@ function onQualityScoreSaved(err) {
     hideActivePage();
     showErrorMessage(err);
   } else {
-    global.activeScreenshotId   [global.activeTaskName] = 0;
-    global.activeROIScreenshotId[global.activeTaskName] = 0;
+    global.evalScreenshotId   [global.activeTask] = 0;
+    global.evalROIScreenshotId[global.activeTask] = 0;
     updateEvalPage();
   }
 }
 
-function initEvalPage(taskName) {
-  $("#container > div").attr("id", taskName);
-  global.activeTaskName = taskName;
+function getScoreButtonLabel(score) {
+  var label = score.value + "-<strong>" + score.label.charAt(0) + "</strong>" + score.label.substr(1);
+  if (score.keys.length > 0) {
+    var which = score.keys[0];
+    if (which == 37) {
+      label += " [left]";
+    } else if (which == 38) {
+      label += " [up]";
+    } else if (which == 39) {
+      label += " [right]";
+    } else if (which == 40) {
+      label += " [down]";
+    }
+  }
+  return label;
+}
+
+function initEvalPage(task) {
+  $("#container > div").attr("id", "eval-" + task);
+  global.activeTask = task;
+  var toolbar = $('#score-buttons');
+  for (var i = 0; i < global.evalScores.length; i++) {
+    var score = global.evalScores[i];
+    var btn = $('<button id="score-1" type="button" class="btn">1-<strong>P</strong>oor [left]</button>');
+    btn.attr("id", "score-" + score.value);
+    if (score.color) {
+      btn.css("background-color", score.color);
+    } else {
+      btn.addClass("btn-default");
+    }
+    btn.html(getScoreButtonLabel(score));
+    if (score.value == 0) {
+      $('#discard-button').append(btn);
+    } else {
+      toolbar.append(btn);
+    }
+  }
   updateEvalPage();
 }
 
 function updateEvalPage() {
-  $("#" + global.activeTaskName).hide();
+  $("#eval-" + global.activeTask).hide();
   queryTotalNumberOfEvaluationSets();
   queryRemainingNumberOfEvaluationSets();
   queryNextEvalScreenshot();
@@ -678,8 +871,10 @@ function setCompButtonColor(i, color) {
 }
 
 function queryCompOverlayColors(callback) {
-  var id1 = Math.min(global.compOverlayIds[0], global.compOverlayIds[1]);
-  var id2 = Math.max(global.compOverlayIds[0], global.compOverlayIds[1]);
+  var overlayId1 = global.compOverlayIds[global.activeTask][0];
+  var overlayId2 = global.compOverlayIds[global.activeTask][1];
+  var id1 = Math.min(overlayId1, overlayId2);
+  var id2 = Math.max(overlayId1, overlayId2);
   var query = `
     SELECT DISTINCT(Color) AS Color FROM ScreenshotOverlays
     WHERE ScreenshotId IN (
@@ -702,9 +897,11 @@ function queryCompOverlayColors(callback) {
 }
 
 function queryNextCompScreenshot() {
-  var id1 = Math.min(global.compOverlayIds[0], global.compOverlayIds[1]);
-  var id2 = Math.max(global.compOverlayIds[0], global.compOverlayIds[1]);
-  var screenshotId = global.activeScreenshotId[global.activeTaskName];
+  var overlayId1 = global.compOverlayIds[global.activeTask][0];
+  var overlayId2 = global.compOverlayIds[global.activeTask][1];
+  var id1 = Math.min(overlayId1, overlayId2);
+  var id2 = Math.max(overlayId1, overlayId2);
+  var screenshotId = global.compScreenshotId[global.activeTask];
   var query = `
       SELECT
         S.ScreenshotId AS ScreenshotId,
@@ -737,12 +934,11 @@ function queryNextCompScreenshot() {
       LEFT JOIN ComparisonChoices AS C
         ON C.ScreenshotId = S.ScreenshotId AND C.RaterId = $raterId
       WHERE A.OverlayId = $id1 AND B.OverlayId = $id2 AND C.BestOverlayId IS NULL
-      GROUP BY S.ScreenshotId
     `;
   if (screenshotId) {
-    query += " AND S.ScreenshotId = " + screenshotId;
+    query += " AND S.ScreenshotId = " + screenshotId + " GROUP BY S.ScreenshotId";
   } else {
-    query += "ORDER BY random() LIMIT 1";
+    query += " GROUP BY S.ScreenshotId ORDER BY random() LIMIT 1";
   }
   global.db.get(query, { $raterId: global.raterId, $id1: id1, $id2: id2 }, function (err, row) {
       if (err) {
@@ -762,11 +958,11 @@ function queryNextCompScreenshot() {
           setCompButtonColor(0, global.compColors[0]);
           setCompButtonColor(1, global.compColors[1]);
           if (global.compColors[0] == color1 && global.compColors[1] == color2) {
-            global.compOverlayIds = [overlay1, overlay2];
+            global.compOverlayIds[global.activeTask] = [overlay1, overlay2];
             setScreenshot("overlay1-view", screenshotId1, fileName1);
             setScreenshot("overlay2-view", screenshotId2, fileName2);
           } else if (global.compColors[0] == color2 && global.compColors[1] == color1) {
-            global.compOverlayIds = [overlay2, overlay1];
+            global.compOverlayIds[global.activeTask] = [overlay2, overlay1];
             setScreenshot("overlay1-view", screenshotId2, fileName2);
             setScreenshot("overlay2-view", screenshotId1, fileName1);
           } else {
@@ -774,13 +970,17 @@ function queryNextCompScreenshot() {
                   " or color " + global.compColors[1] + ", but actual colors are " + color1 + " and " + color2 + " instead!";
           }
         } else {
-          shuffle(global.compOverlayIds);
-          if (global.compOverlayIds[0] == overlay1 && global.compOverlayIds[1] == overlay2) {
+          var overlayIds = [
+            global.compOverlayIds[global.activeTask][0],
+            global.compOverlayIds[global.activeTask][1]
+          ];
+          shuffle(overlayIds);
+          if (overlayIds[0] == overlay1 && overlayIds[1] == overlay2) {
             setCompButtonColor(0, color1);
             setCompButtonColor(1, color2);
             setScreenshot("overlay1-view", screenshotId1, fileName1);
             setScreenshot("overlay2-view", screenshotId2, fileName2);
-          } else if (global.compOverlayIds[0] == overlay2 && global.compOverlayIds[1] == overlay1) {
+          } else if (overlayIds[0] == overlay2 && overlayIds[1] == overlay1) {
             setCompButtonColor(0, color2);
             setCompButtonColor(1, color1);
             setScreenshot("overlay1-view", screenshotId2, fileName2);
@@ -797,6 +997,8 @@ function queryNextCompScreenshot() {
         } else {
           setBoundsScreenshot(row['ROIScreenshotId'], row['ROIScreenshotName']);
           setZoomedScreenshot(row['ScreenshotId'], row['FileName']);
+          global.compROIScreenshotId[global.activeTask] = row['ROIScreenshotId'];
+          global.compScreenshotId   [global.activeTask] = row['ScreenshotId'];
           onCompPageReady();
         }
       } else {
@@ -830,15 +1032,15 @@ function onCompPageReady() {
     event.preventDefault();
     return false;
   });
-  $("#" + global.activeTaskName).show();
+  $("#comp-" + global.activeTask).show();
 }
 
 function saveBestOverlayChoice(choice) {
   $("html").off('keyup');
   $("#choice button").off('click');
   var bestOverlayId = 0;
-  if (0 <= choice && choice < global.compOverlayIds.length) {
-    bestOverlayId = global.compOverlayIds[choice];
+  if (0 <= choice && choice < global.compOverlayIds[global.activeTask].length) {
+    bestOverlayId = global.compOverlayIds[global.activeTask][choice];
   }
   var query = `
     INSERT INTO ComparisonChoices (ScreenshotId, RaterId, BestOverlayId)
@@ -847,7 +1049,7 @@ function saveBestOverlayChoice(choice) {
   global.db.run(
     query,
     {
-      $screenshotId: global.activeScreenshotId[global.activeTaskName],
+      $screenshotId: global.compScreenshotId[global.activeTask],
       $raterId: global.raterId,
       $bestOverlayId: bestOverlayId
     },
@@ -860,27 +1062,25 @@ function onBestOverlayChoiceSaved(err) {
     hideActivePage();
     showErrorMessage(err);
   } else {
-    global.activeScreenshotId   [global.activeTaskName] = 0;
-    global.activeROIScreenshotId[global.activeTaskName] = 0;
+    global.compScreenshotId   [global.activeTask] = 0;
+    global.compROIScreenshotId[global.activeTask] = 0;
     updateCompPage();
   }
 }
 
-function initCompPage(taskName) {
-  $("#container > div").attr("id", taskName);initEvalPage
-  global.activeTaskName = taskName;
-  global.compOverlayIds = global.overlayIds[taskName];
+function initCompPage(task) {
+  $("#container > div").attr("id", "comp-" + task);
+  global.activeTask = task;
   queryCompOverlayColors(updateCompPage);
 }
 
 function updateCompPage() {
-  $("#" + global.activeTaskName).hide();
-  queryTotalNumberOfComparisonSets();
-  queryRemainingNumberOfComparisonSets();
+  $("#comp-" + global.activeTask).hide();
+  queryTotalNumberOfComparisonSets(global.activeTask);
+  queryRemainingNumberOfComparisonSets(global.activeTask);
   queryNextCompScreenshot();
 }
 
 function resetCompPage() {
-  global.compOverlayIds = [];
   global.compColors = [];
 }

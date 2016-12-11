@@ -2,6 +2,18 @@
 --                             Enumerations                                 --
 ------------------------------------------------------------------------------
 
+-- Table with contact information
+CREATE TABLE Contacts
+(
+    ContactId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name VARCHAR(64) NOT NULL,
+    Email VARCHAR(256) NOT NULL,
+    Subject VARCHAR(64)
+);
+
+INSERT INTO Contacts (Name, Email, Subject)
+VALUES ("Andreas Schuh", "andreas.schuh@imperial.ac.uk", "Neonatal cortex evaluation");
+
 -- Enumeration of brain hemispheres
 CREATE TABLE Hemispheres
 (
@@ -82,21 +94,26 @@ CREATE TABLE Scores
 (
     Value INTEGER PRIMARY KEY,  -- Numeric score value, the higher the better
     Label VARCHAR(20) NOT NULL, -- Verbal score, e.g., 'Good'
+    Color CHARACTER(7),         -- Button color assigned with this score
+    Keys VARCHAR(32),           -- Comma separated list of additional keyup event codes
     Description VARCHAR(500),   -- Explanation of when to assign this score
     UNIQUE (Label)
 );
 
-INSERT INTO Scores (Value, Label, Description)
-VALUES (0, 'Discard', 'Field of view seen in screenshot does not allow for a proper scoring');
+INSERT INTO Scores (Value, Label, Keys, Description)
+VALUES (0, 'Discard', '40', 'No or insufficient contour seen in screenshot');
 
-INSERT INTO Scores (Value, Label, Description)
-VALUES (1, 'Poor', 'Contour substantially deviates from tissue boundary, at least in parts');
+INSERT INTO Scores (Value, Label, Color, Description)
+VALUES (1, 'Poor', '#f0ad4e', 'Contour substantially deviates from tissue boundary, missing gyri');
 
-INSERT INTO Scores (Value, Label, Description)
-VALUES (2, 'Fair', 'Contour close to tissue boundary, but for the most part not with sub-pixel accuracy');
+INSERT INTO Scores (Value, Label, Color, Keys, Description)
+VALUES (2, 'Fair', '#5bc0de', '37', 'Contour mainly correct, but with some major mistakes');
 
-INSERT INTO Scores (Value, Label, Description)
-VALUES (3, 'Good', 'Contour depicts tissue boundary for the most part with only minor irregularities');
+INSERT INTO Scores (Value, Label, Color, Keys, Description)
+VALUES (3, 'Good', '#0275d8', '38', 'Contour mainly correct, but with some minor mistakes');
+
+INSERT INTO Scores (Value, Label, Color, Keys, Description)
+VALUES (4, 'Excellent', '#5cb85c', '39', 'Contour follows the tissue boundary');
 
 ------------------------------------------------------------------------------
 --                             Data tables                                  --
@@ -269,6 +286,18 @@ WHERE O1.OverlayId NOT IN (0, 1) AND O1.OverlayId < O2.OverlayId AND O3.OverlayI
 --                         Evaluation tables                                --
 ------------------------------------------------------------------------------
 
+-- Table with IDs of overlays to be evaluated individually
+CREATE TABLE EvaluationTasks
+(
+    EvaluationTaskId INTEGER NOT NULL,
+    OverlayId INTEGER NOT NULL,
+    FOREIGN KEY (OverlayId) REFERENCES ScreenshotOverlays(OverlayId)
+)
+
+INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 2);
+INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 3);
+INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 4);
+
 -- Table of single overlay evaluation scores
 CREATE TABLE EvaluationScores
 (
@@ -279,6 +308,20 @@ CREATE TABLE EvaluationScores
     FOREIGN KEY (ScreenshotId) REFERENCES EvaluationScreenshots(ScreenshotId),
     FOREIGN KEY (Score) REFERENCES Scores(Value)
 );
+
+-- Table with pairs of overlays to be compared
+CREATE TABLE ComparisonTasks
+(
+    ComparisonTaskId INTEGER PRIMARY KEY,
+    OverlayId1 INTEGER NOT NULL,
+    OverlayId2 INTEGER NOT NULL,
+    FOREIGN KEY (OverlayId1) REFERENCES ScreenshotOverlays(OverlayId),
+    FOREIGN KEY (OverlayId2) REFERENCES ScreenshotOverlays(OverlayId),
+    UNIQUE (OverlayId1, OverlayId2)
+)
+
+INSERT INTO ComparisonTasks (ComparisonTaskId, OverlayId1, OverlayId2) VALUES (1, 3, 4);
+INSERT INTO ComparisonTasks (ComparisonTaskId, OverlayId1, OverlayId2) VALUES (2, 3, 2);
 
 -- Table of overlay comparison choices
 CREATE TABLE ComparisonChoices
