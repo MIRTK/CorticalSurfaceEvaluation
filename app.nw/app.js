@@ -513,34 +513,36 @@ function updateOpenPage() {
 }
 
 function updateHelpPage() {
-  var scoresTable = $("#help-scores tbody");
-  scoresTable.empty();
-  for (var i = 0; i < global.evalScores.length; i++) {
-    var score = global.evalScores[i];
-    var btn = $('<button class="btn btn-block"></button>');
-    btn.attr("id", "test-score-" + score.value);
-    if (score.color) {
-      btn.css("background-color", score.color);
-    } else {
-      btn.addClass("btn-default");
+  if (global.db) {
+    var scoresTable = $("#help-scores tbody");
+    scoresTable.empty();
+    for (var i = 0; i < global.evalScores.length; i++) {
+      var score = global.evalScores[i];
+      var btn = $('<button class="btn btn-score btn-block"></button>');
+      btn.attr("id", "test-score-" + score.value);
+      if (score.color) {
+        btn.css("background-color", score.color);
+      } else {
+        btn.addClass("btn-default");
+      }
+      btn.html(getScoreButtonLabel(score));
+      btn.click(function (event) {
+        var parts = this.id.split('-');
+        var score = parts[parts.length-1];
+        var title = "You're score is " + score + "!";
+        var msg = "Note that this dialog won't be shown during the evaluation."
+                + " It is stored in the database instead.";
+        alert(title + "\n\n" + msg);
+      });
+      var cell = $('<td></td>');
+      cell.append(btn);
+      var descr = $("<td></td>");
+      descr.html(score.descr);
+      var row = $("<tr></tr>");
+      row.append(btn);
+      row.append(descr);
+      scoresTable.append(row);
     }
-    btn.html(getScoreButtonLabel(score));
-    btn.click(function (event) {
-      var parts = this.id.split('-');
-      var score = parts[parts.length-1];
-      var title = "You're score is " + score + "!";
-      var msg = "Note that this dialog won't be shown during the evaluation."
-              + " It is stored in the database instead.";
-      alert(title + "\n\n" + msg);
-    });
-    var cell = $('<td></td>');
-    cell.append(btn);
-    var descr = $("<td></td>");
-    descr.html(score.descr);
-    var row = $("<tr></tr>");
-    row.append(btn);
-    row.append(descr);
-    scoresTable.append(row);
   }
 }
 
