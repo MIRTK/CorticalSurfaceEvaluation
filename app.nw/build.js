@@ -1,20 +1,25 @@
+var path = require('path');
 var NwBuilder = require('nw-builder');
 
 var args = process.argv.slice(2);
 if (args.length === 0) {
-  args.push('osx64');
-  args.push('linux64');
-  args.push('win64');
+  if (process.platform === 'darwin') {
+    args.push('osx64');
+  } else if (process.platform === 'linux') {
+    args.push('linux64');
+  } else if (process.platform === 'win32') {
+    args.push('win64');
+  }
 }
 
 var nw = new NwBuilder({
-  files: './app.nw/**',
-  platforms: args,  // ['osx64', 'win64', 'linux64'],
+  files: path.join(__dirname, '**'),
+  platforms: args,
   version: 'latest',
   flavor: 'normal',
   buildType: function () { return 'release'; },
-  macIcns: './app.nw/app.icns',
-  winIco: './app.nw/app.ico'
+  macIcns: path.join(__dirname, 'app.icns'),
+  winIco: path.join(__dirname, 'app.ico')
 });
 
 // .build() returns a promise but also supports a plain callback approach as well
