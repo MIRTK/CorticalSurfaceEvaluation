@@ -292,7 +292,7 @@ CREATE TABLE EvaluationTasks
     EvaluationTaskId INTEGER NOT NULL,
     OverlayId INTEGER NOT NULL,
     FOREIGN KEY (OverlayId) REFERENCES ScreenshotOverlays(OverlayId)
-)
+);
 
 INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 2);
 INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 3);
@@ -318,7 +318,7 @@ CREATE TABLE ComparisonTasks
     FOREIGN KEY (OverlayId1) REFERENCES ScreenshotOverlays(OverlayId),
     FOREIGN KEY (OverlayId2) REFERENCES ScreenshotOverlays(OverlayId),
     UNIQUE (OverlayId1, OverlayId2)
-)
+);
 
 INSERT INTO ComparisonTasks (ComparisonTaskId, OverlayId1, OverlayId2) VALUES (1, 3, 4);
 INSERT INTO ComparisonTasks (ComparisonTaskId, OverlayId1, OverlayId2) VALUES (2, 3, 2);
