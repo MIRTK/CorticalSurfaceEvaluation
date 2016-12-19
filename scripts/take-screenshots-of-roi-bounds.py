@@ -193,18 +193,6 @@ def take_screenshots_of_single_roi(args):
     color = rgb(*args.color)
     args.database = os.path.abspath(args.database)
     base_dir = os.path.dirname(args.database)
-    if args.prefix:
-        args.prefix = os.path.abspath(args.prefix)
-    else:
-        args.prefix = os.path.join(os.path.dirname(args.database),
-                                   '-'.join([args.subject, args.session]),
-                                   'screenshots', 'roi-bounds')
-    if not args.path_format:
-        args.path_format = os.path.join('{prefix}', 'roi-{roi:06d}-{n:02d}_{suffix}.png')
-    if args.range:
-        level_window = range_to_level_window(*args.range)
-    else:
-        level_window = None
 
     image, qform = read_image(os.path.abspath(args.image))
     image2world = vtkMatrixToLinearTransform()
@@ -213,6 +201,26 @@ def take_screenshots_of_single_roi(args):
     world2image = image2world.GetLinearInverse()
 
     db = sqlite3.connect(args.database)
+
+    if args.scan > 0:
+        scan_id = args.scan
+    else:
+        scan_id = get_scan_id(db, args.subject, args.session)
+
+    if args.prefix:
+        prefix = os.path.abspath(args.prefix)
+        prefix = partial_format(prefix, subject=args.subject, session=args.session, scan=scan_id, roi=args.roi)
+    else:
+        prefix = os.path.join(os.path.dirname(args.database),
+                              '-'.join([args.subject, args.session]),
+                              'screenshots', 'roi-bounds')
+    if not args.path_format:
+        args.path_format = os.path.join('{prefix}', 'roi-{roi:06d}-{n:02d}_{suffix}.png')
+    if args.range:
+        level_window = range_to_level_window(*args.range)
+    else:
+        level_window = None
+
     try:
         if args.verbose > 0:
             print("Take screenshots of bounding boxes of ROI {roi}".format(roi=args.roi))
@@ -225,15 +233,18 @@ def take_screenshots_of_single_roi(args):
         span = row[3]
         center = [0, 0, 0]
         world2image.TransformPoint((row[0], row[1], row[2]), center)
-        offsets = compute_offsets(span, args.subdiv)
+        if len(args.offsets) > 0:
+            offsets = args.offsets
+        else:
+            offsets = compute_offsets(span, args.subdiv)
         screenshots = []
-        path_format = partial_format(args.path_format, roi=args.roi)
+        path_format = partial_format(args.path_format, subject=args.subject, session=args.session, roi=args.roi)
         try:
             screenshots = take_screenshots_of_roi_bounds(
                 image, transform=image2world, level_window=level_window,
                 center=center, length=span, offsets=offsets, zoom_out_factor=args.zoom_out_factor,
                 size=args.size, line_width=args.line_width, color=color,
-                prefix=args.prefix, suffix=args.suffix, path_format=path_format, overwrite=False
+                prefix=prefix, suffix=args.suffix, path_format=path_format, overwrite=False
             )
             insert_screenshots(
                 db, roi_id=args.roi, base=base_dir, screenshots=screenshots,
@@ -262,10 +273,11 @@ def call_this_script_for_each_roi(args):
         argv = [
             os.path.abspath(__file__),
             args.database,
-            '--image', args.image,
+            '--roi', row[0],
+            '--scan', scan_id,
             '--subject', args.subject,
             '--session', args.session,
-            '--roi', row[0],
+            '--image', args.image,
             '--zoom-out-factor', args.zoom_out_factor,
             '--color', args.color[0], args.color[1], args.color[2],
             '--line-width', args.line_width
@@ -280,6 +292,9 @@ def call_this_script_for_each_roi(args):
             argv.extend(['--range', args.range[0], args.range[1]])
         if args.subdiv:
             argv.extend(['--subdiv', args.subdiv])
+        if len(args.offsets) > 0:
+            argv.append('--offsets')
+            argv.extend(args.offsets)
         if args.size:
             argv.extend(['--size', args.size[0], args.size[1]])
         if args.use_all_colors:
@@ -297,6 +312,7 @@ def call_this_script_for_each_roi(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('database', help="SQLite database file")
+    parser.add_argument('--scan', type=int, default=0, help="ID of subject/session scan")
     parser.add_argument('--roi', type=int, default=0, help="ID of region of interest")
     parser.add_argument('--subject', help="Subject ID", required=True)
     parser.add_argument('--session', help="Session ID", required=True)
@@ -308,6 +324,7 @@ if __name__ == '__main__':
     parser.add_argument('--zoom-out-factor', default=0., type=float, help="Zoom out factor, trim to image when non-positive")
     parser.add_argument('--range', nargs=2, type=float, help="Minimum/maximum intensity used for greyscale color lookup table")
     parser.add_argument('--subdiv', default=0, type=int, help="Number of subdivisions of each ROI half space")
+    parser.add_argument('--offsets', default=[], nargs='+', type=int, help="Slice offsets from ROI center point")
     parser.add_argument('--size', default=(512, 512), nargs=2, type=int, help="Size of screenshots in number of pixels")
     parser.add_argument('--color', default=(247, 32, 57), nargs=3, type=int, help="Color of bounding box")
     parser.add_argument('--line-width', default=4, type=int, help="Width of bounding box outline")

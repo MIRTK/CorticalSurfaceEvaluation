@@ -166,14 +166,21 @@ def insert_screenshots(db, roi_id, base, screenshots, overlays=[], colors=[], ve
         if base:
             path = os.path.relpath(path, base)
         res = db.execute("SELECT ScreenshotId FROM Screenshots WHERE FileName = '{}'".format(path)).fetchone()
-        if res:
-            screenshot_id = res[0]
-        else:
-            params['path'] = path
-            if verbose > 0:
-                print("Insert screenshot: " + path)
-            cur = db.cursor()
-            try:
+        cur = db.cursor()
+        try:
+            if res:
+                screenshot_id = res[0]
+                if verbose > 0:
+                    print("Update overlay colors for screenshot: " + path)
+                for j in xrange(len(overlays)):
+                    cur.execute("""
+                        UPDATE ScreenshotOverlays SET Color = :color
+                        WHERE ScreenshotId = :screenshot AND OverlayId = :overlay
+                        """, {'screenshot': screenshot_id, 'overlay': overlays[j], 'color': color_code(colors[j])})
+            else:
+                params['path'] = path
+                if verbose > 0:
+                    print("Insert screenshot: " + path)
                 cur.execute(
                     """INSERT INTO Screenshots (FileName, ROI_Id, CenterI, CenterJ, CenterK, ViewId)
                        VALUES (:path, :roi, :i, :j, :k, :view)
@@ -184,9 +191,9 @@ def insert_screenshots(db, roi_id, base, screenshots, overlays=[], colors=[], ve
                         INSERT INTO ScreenshotOverlays (ScreenshotId, OverlayId, Color)
                         VALUES (:screenshot, :overlay, :color)
                         """, {'screenshot': screenshot_id, 'overlay': overlays[j], 'color': color_code(colors[j])})
-            finally:
-                cur.close()
-            db.commit()
+        finally:
+            cur.close()
+        db.commit()
         screenshot_ids.append(screenshot_id)
     return screenshot_ids
 
@@ -230,7 +237,10 @@ def take_screenshots_of_single_roi(args):
         center = [0, 0, 0]
         span = args.zoom * row[3]
         world2image.TransformPoint((row[0], row[1], row[2]), center)
-        offsets = compute_offsets(span, args.subdiv)
+        if len(args.offsets) > 0:
+            offsets = args.offsets
+        else:
+            offsets = compute_offsets(span, args.subdiv)
 
         # collect information about overlays and read input files
         overlays = []
@@ -367,6 +377,9 @@ def call_this_script_for_each_roi(args):
             argv.extend(args.range)
         if args.subdiv:
             argv.extend(['--subdiv', args.subdiv])
+        if len(args.offsets) > 0:
+            argv.append('--offsets')
+            argv.extend(args.offsets)
         if args.size:
             argv.append('--size')
             argv.extend(args.size)
@@ -422,6 +435,8 @@ if __name__ == '__main__':
                         help="Minimum/maximum intensity used for greyscale color lookup table")
     parser.add_argument('--subdiv', default=0, type=int,
                         help="Number of subdivisions of each ROI half space")
+    parser.add_argument('--offsets', default=[], nargs='+', type=int,
+                        help="Slice offsets from ROI center point")
     parser.add_argument('--size', default=(512, 512), nargs=2, type=int,
                         help="Size of screenshots in number of pixels")
     parser.add_argument('--color', dest='colors', nargs=3, action='append',
