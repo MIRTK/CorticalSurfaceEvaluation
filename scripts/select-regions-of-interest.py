@@ -230,9 +230,9 @@ def compute_volume(box):
 
 def compute_overlap(box1, vol1, box2, vol2):
     """Compute ratio of overlap between two ROIs."""
-    vol_intersection = (max(0., max(box1[1], box2[1]) - min(box1[0], box2[0])) *
-                        max(0., max(box1[3], box2[3]) - min(box1[2], box2[2])) *
-                        max(0., max(box1[5], box2[5]) - min(box1[4], box2[4])))
+    vol_intersection = (max(0., min(box1[1], box2[1]) - max(box1[0], box2[0])) *
+                        max(0., min(box1[3], box2[3]) - max(box1[2], box2[2])) *
+                        max(0., min(box1[5], box2[5]) - max(box1[4], box2[4])))
     vol_union = vol1 + vol2 - vol_intersection
     return vol_intersection / vol_union
 
