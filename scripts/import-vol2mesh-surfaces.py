@@ -9,7 +9,8 @@ import argparse
 import mirtk
 
 
-dhcp_derived_data_dir = os.path.abspath(os.path.join(os.sep, 'vol', 'dhcp-derived-data', 'derived_v2.3', 'ReconstructionsRelease02_derived_v2.3'))
+dhcp_derived_data_dir = os.path.join(os.sep, 'vol', 'dhcp-derived-data', 'derived_v2.3', 'ReconstructionsRelease02_derived_v2.3')
+dhcp_derived_data_dir = os.path.abspath(dhcp_derived_data_dir)
 
 
 def get_value_by_case_insensitive_key(row, name):
@@ -46,12 +47,15 @@ if __name__ == '__main__':
     for session in args.sessions:
         subid, sesid = session.split('-')
         src_dir = os.path.join(args.derived_data, 'sub-' + subid, 'ses-' + sesid, 'structural', 'Native', 'surfaces-vtk')
-        dst = os.path.join(args.prefix, '{}-{}-white-rh.vtp'.format(subid, sesid))
+        dst_dir = os.path.join(args.prefix, '{}-{}')
+        if not os.path.isdir(dst_dir):
+            os.makedirs(dst_dir)
+        dst = os.path.join(dst_dir, 'white-rh.vtp'.format(subid, sesid))
         if not os.path.isfile(dst):
             src = os.path.join(src_dir, 'sub-{}_ses-{}_T2MS_T2MS_Co3DOutSVRMot.R.white.native.surf.vtk'.format(subid, sesid))
             mirtk.run('convert-pointset', args=[src, dst])
             print("Imported RH white matter surface of subject {}, session {}".format(subid, sesid))
-        dst = os.path.join(args.prefix, '{}-{}-white-lh.vtp'.format(subid, sesid))
+        dst = os.path.join(dst_dir, 'white-lh.vtp'.format(subid, sesid))
         if not os.path.isfile(dst):
             src = os.path.join(src_dir, 'sub-{}_ses-{}_T2MS_T2MS_Co3DOutSVRMot.L.white.native.surf.vtk'.format(subid, sesid))
             mirtk.run('convert-pointset', args=[src, dst])
