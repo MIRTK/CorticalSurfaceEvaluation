@@ -170,13 +170,14 @@ def insert_screenshots(db, roi_id, base, screenshots, overlays=[], colors=[], ve
         try:
             if res:
                 screenshot_id = res[0]
-                if verbose > 0:
-                    print("Update overlay colors for screenshot: " + path)
-                for j in xrange(len(overlays)):
-                    cur.execute("""
-                        UPDATE ScreenshotOverlays SET Color = :color
-                        WHERE ScreenshotId = :screenshot AND OverlayId = :overlay
-                        """, {'screenshot': screenshot_id, 'overlay': overlays[j], 'color': color_code(colors[j])})
+                if screenshot[5]:  # isnew
+                    if verbose > 0:
+                        print("Update overlay colors for screenshot: " + path)
+                    for j in xrange(len(overlays)):
+                        cur.execute("""
+                            UPDATE ScreenshotOverlays SET Color = :color
+                            WHERE ScreenshotId = :screenshot AND OverlayId = :overlay
+                            """, {'screenshot': screenshot_id, 'overlay': overlays[j], 'color': color_code(colors[j])})
             else:
                 params['path'] = path
                 if verbose > 0:
