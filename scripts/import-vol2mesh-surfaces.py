@@ -47,7 +47,7 @@ if __name__ == '__main__':
     for session in args.sessions:
         subid, sesid = session.split('-')
         src_dir = os.path.join(args.derived_data, 'sub-' + subid, 'ses-' + sesid, 'structural', 'Native', 'surfaces-vtk')
-        dst_dir = os.path.join(args.prefix, '{}-{}')
+        dst_dir = os.path.join(args.prefix, '{}-{}'.format(subid, sesid))
         if not os.path.isdir(dst_dir):
             os.makedirs(dst_dir)
         dst = os.path.join(dst_dir, 'white-rh.vtp'.format(subid, sesid))
