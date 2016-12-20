@@ -294,7 +294,6 @@ CREATE TABLE EvaluationTasks
     FOREIGN KEY (OverlayId) REFERENCES ScreenshotOverlays(OverlayId)
 );
 
-INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 2);
 INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 3);
 INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 4);
 
