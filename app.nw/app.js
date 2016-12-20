@@ -575,15 +575,18 @@ function showDoneMessage() {
 // ----------------------------------------------------------------------------
 // Progress for both summary and evaluation pages
 function queryTotalNumberOfEvaluationSets(task) {
-  var query = "SELECT COUNT(DISTINCT(ScreenshotId)) AS N FROM EvaluationScreenshots";
+  var taskId = task;
+  if (!taskId) taskId = global.activeTask;
+  var query = `
+    SELECT COUNT(DISTINCT(ScreenshotId)) AS N
+    FROM EvaluationScreenshots
+    WHERE ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[taskId]);
   global.db.get(
     query,
     function (err, row) {
       if (err) {
         showErrorMessage(err);
       } else {
-        var taskId = task;
-        if (!taskId) taskId = global.activeTask;
         setTotalNumberOfScreenshots("eval-" + taskId, row['N']);
       }
     }
@@ -591,13 +594,14 @@ function queryTotalNumberOfEvaluationSets(task) {
 }
 
 function queryRemainingNumberOfEvaluationSets(task) {
+  var taskId = task;
+  if (!taskId) taskId = global.activeTask;
   var query = `
     SELECT COUNT(DISTINCT(S.ScreenshotId)) AS N
     FROM EvaluationScreenshots AS S
     LEFT JOIN EvaluationScores AS E
       ON S.ScreenshotId = E.ScreenshotId AND RaterId = $raterId
-    WHERE Score IS NULL
-  `;
+    WHERE Score IS NULL AND ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[taskId]);
   global.db.get(
     query,
     {
@@ -607,8 +611,6 @@ function queryRemainingNumberOfEvaluationSets(task) {
       if (err) {
         showErrorMessage(err);
       } else {
-        var taskId = task;
-        if (!taskId) taskId = global.activeTask;
         setRemainingNumberOfScreenshots("eval-" + taskId, row['N']);
       }
     }
@@ -703,7 +705,7 @@ function queryNextEvalScreenshot() {
     FROM EvaluationScreenshots AS S
     LEFT JOIN EvaluationScores AS E
       ON E.ScreenshotId = S.ScreenshotId AND RaterId = $raterId
-    WHERE Score IS NULL
+    WHERE Score IS NULL AND ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[global.activeTask]) + `
   `;
   var screenshotId = global.evalScreenshotId[global.activeTask];
   if (screenshotId) {
