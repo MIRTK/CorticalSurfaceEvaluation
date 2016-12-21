@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# -----------------------------------------------------------------------------
+# Help
+[ $# -gt 0 ] || {
+    echo "usage: $(basename "$BASH_SOURCE") <csv>|<sessions>..."
+    exit 1
+}
+
+
+# -----------------------------------------------------------------------------
+import()
+{
+  echo
+  echo "Subject $SUBJECT, session $SESSION"
+  echo
+  python "$SCRIPT_DIR/import-segmentations.py" \
+      --sessions "$SUBJECT-$SESSION" \
+      || exit 1
+  rh="$BASE_DIR/meshes/v2.3/$SUBJECT-$SESSION/white-rh.vtp"
+  lh="$BASE_DIR/meshes/v2.3/$SUBJECT-$SESSION/white-lh.vtp"
+  if [ ! -f "$rh" -o ! -f "$lh" ]; then
+    rm -f "$rh" "$lh"
+    python "$SCRIPT_DIR/import-vol2mesh-surfaces.py" "$TEMP_DIR" \
+        --sessions "$SUBJECT-$SESSION" \
+        || exit 1
+    python "$SCRIPT_DIR/add-cortex-mask.py" \
+      --sessions "$SUBJECT-$SESSION" \
+      --surface "$TEMP_DIR/{SubjectId}-{SessionId}/white-{Hemisphere}.vtp" \
+      || exit 1
+    mkdir -p "meshes/v2.3" || exit 1
+    mv -f "$TEMP_DIR/$SUBJECT-$SESSION" "meshes/v2.3" || exit 1
+    rm -f "$BASE_DIR/meshes/v2.3/$SUBJECT-$SESSION/white+internal.vtp"
+    echo "Added cortex mask to imported surface meshes"
+  fi
+  if [ ! -f "$BASE_DIR/meshes/v2.3/$SUBJECT-$SESSION/white+internal.vtp" ]; then
+    python "$SCRIPT_DIR/join-hemispheres.py" \
+        --sessions "$SUBJECT-$SESSION" \
+        --input "$BASE_DIR/meshes/v2.3/{SubjectId}-{SessionId}/white-{Hemisphere}.vtp" \
+        --output "$BASE_DIR/meshes/v2.3/{SubjectId}-{SessionId}/white+internal.vtp" \
+        || exit 1
+    echo "Joined hemisphere into single surface mesh file"
+  fi
+}
+
+
+# -----------------------------------------------------------------------------
+# MAIN
+
+BASE_DIR="$(dirname "$BASH_SOURCE")"
+BASE_DIR="$(cd "$SCRIPT_DIR" && pwd)"
+SCRIPT_DIR="$BASE_DIR/scripts"
+TEMP_DIR="$BASE_DIR/temp"
+
+SESSIONS=("$@")
+CSV_NAME=
+if [ ${#SESSIONS[@]} -eq 1 -a "${SESSIONS[0]##*.}" = 'csv' ]; then
+  CSV_NAME="${SESSIONS[0]}"
+  SESSIONS=()
+fi
+
+if [ ${#SESSIONS[@]} -gt 0 ]; then
+  for arg in "${SESSIONS[@]}"; do
+    while IFS=- read SUBJECT SESSION; do
+      import
+    done <<< "$arg"
+  done
+else
+  while IFS=, read SUBJECT SESSION; do
+    [ ${SUBJECT:0:2} = 'CC' ] || continue
+    import
+  done < "$CSV_NAME"
+fi
