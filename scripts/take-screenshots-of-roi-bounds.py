@@ -162,7 +162,7 @@ def insert_screenshots(db, roi_id, base, screenshots, overlays=[], colors=[], ve
         }
         path = screenshot[0]
         if base:
-            path = os.path.relpath(path, base)
+            path = os.path.relpath(os.path.realpath(path), os.path.realpath(base))
         res = db.execute("SELECT ScreenshotId FROM Screenshots WHERE FileName = '{}'".format(path)).fetchone()
         if res:
             screenshot_id = res[0]
