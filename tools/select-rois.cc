@@ -139,17 +139,35 @@ bool FromString(const char *str, bool &value)
 
 
 // -----------------------------------------------------------------------------
-void Print(vtkPolyData *mesh, const Array<Cluster> &clusters, const char *delim = ",")
+void Print(vtkPolyData *surface, vtkPolyData *reference,
+           const Array<Cluster> &clusters, const char *delim = ",")
 {
-  double p[3];
-  cout << "ClusterId,ClusterSize,SeedId,SeedX,SeedY,SeedZ,CenterX,CenterY,CenterZ\n";
+  const vtkIdType offset = surface->GetNumberOfPoints();
+
+  double p[3], q[3];
+  vtkNew<vtkPointLocator> loc12, loc21;
+  loc12->SetDataSet(reference);
+  loc12->BuildLocator();
+  loc21->SetDataSet(surface);
+  loc21->BuildLocator();
+
+  cout << "ClusterId,ClusterSize,SeedId,SeedX,SeedY,SeedZ,CenterX,CenterY,CenterZ,MiddleX,MiddleY,MiddleZ\n";
   for (const auto &cluster : clusters) {
-    mesh->GetPoint(cluster.seed, p);
+    if (cluster.seed >= offset) {
+      reference->GetPoint(cluster.seed - offset, p);
+      surface->GetPoint(loc21->FindClosestPoint(p), q);
+    } else {
+      surface->GetPoint(cluster.seed, p);
+      reference->GetPoint(loc12->FindClosestPoint(p), q);
+    }
     cout << cluster.label << delim << cluster.size << delim << cluster.seed
          << delim << p[0] << delim << p[1] << delim << p[2]
          << delim << cluster.center[0]
          << delim << cluster.center[1]
          << delim << cluster.center[2]
+         << delim << .5 * (p[0] + q[0])
+         << delim << .5 * (p[1] + q[1])
+         << delim << .5 * (p[2] + q[2])
          << "\n";
   }
   cout.flush();
@@ -394,7 +412,7 @@ Array<Cluster> DistantClusters(vtkSmartPointer<vtkPolyData> surface,
   Array<vtkIdType> seeds = InitSeeds(dists);
 
   if (g_verbose) {
-    cout << "Distance: ";
+    cerr << "Distance: ";
   }
   float threshold = 0.f;
   if (dists_percentile > 0) {
@@ -417,14 +435,17 @@ Array<Cluster> DistantClusters(vtkSmartPointer<vtkPolyData> surface,
       threshold = dists->GetValue(seeds[k - 1]) + (rank - k) * (dists->GetValue(seeds[k]) - dists->GetValue(seeds[k - 1]));
     }
     if (g_verbose) {
-      cout << dists_percentile << "%-tile value = " << threshold << ", ";
+      cerr << dists_percentile << "%-tile value = " << threshold << ", ";
     }
   }
   if (threshold < min_threshold) {
     threshold = min_threshold;
   }
+  if (min_seed_dist < threshold) {
+    min_seed_dist = threshold;
+  }
   if (g_verbose) {
-    cout << "threshold = " << threshold << endl;
+    cerr << "min. seed distance = " << min_seed_dist << ", threshold = " << threshold << endl;
   }
 
   labels->SetNumberOfComponents(1);
@@ -842,12 +863,13 @@ int main(int argc, char *argv[])
   float       min_threshold    = -1.f;
   float       roi_span         = 40.f;
   int         max_points       = 0;
-  int         max_random       = 0;
+  int         num_points       = 0;
   float       random_ratio     = 0.f;
   float       max_overlap      = 1.f;
   vtkIdType   min_size         = 10;
   bool        jointly          = false;
   bool        centered         = false;
+  bool        midpoints        = false;
   bool        stratified       = false;
 
   for (int i = 3; i < argc; ++i) {
@@ -905,6 +927,12 @@ int main(int argc, char *argv[])
         exit(1);
       }
     }
+    else if (opt == "-link-centers") {
+      if (!FromString(argv[++i], midpoints)) {
+        cerr << "Option " << opt << " requires a boolean argument!" << endl;
+        exit(1);
+      }
+    }
     else if (opt == "-stratified") {
       if (!FromString(argv[++i], stratified)) {
         cerr << "Option " << opt << " requires a boolean argument!" << endl;
@@ -938,7 +966,7 @@ int main(int argc, char *argv[])
       }
     }
     else if (opt == "-num-points") {
-      if (!FromString(argv[++i], max_random) || max_random < 0) {
+      if (!FromString(argv[++i], num_points) || num_points < 0) {
         cerr << "Option " << opt << " requires a non-negative integral number as argument!" << endl;
         exit(1);
       }
@@ -988,6 +1016,13 @@ int main(int argc, char *argv[])
       min_threshold = .5f * min_seed_dist;
     }
   }
+  if (num_points > 0) {
+    max_points = num_points;
+  }
+  if (centered && midpoints) {
+    cerr << "Options -cluster-centers and -link-centers are mutually exclusive!" << endl;
+    exit(1);
+  }
 
   // Read input surfaces
   vtkSmartPointer<vtkPolyData> surface   = Surface(surface_name);
@@ -1015,6 +1050,9 @@ int main(int argc, char *argv[])
   if (max_overlap < 1.f) {
     clusters = ReduceClusters(clusters, roi_span, max_overlap);
   }
+  if (g_verbose) {
+    cerr << "Selected " << clusters.size() << " distant clusters" << endl;
+  }
 
   // Truncate number of clusters
   if (max_points > 0) {
@@ -1029,7 +1067,8 @@ int main(int argc, char *argv[])
 
   // Ensure that a certain ratio of points is randomly selected
   if (random_ratio > 0.f) {
-    int n = static_cast<int>(round(random_ratio * clusters.size()));
+    int k = (max_points > 0 ? max_points : static_cast<int>(clusters.size()));
+    int n = static_cast<int>(round(random_ratio * k));
     if (max_points > 0) {
       size_t m = static_cast<size_t>(max(0, max_points - n));
       if (clusters.size() > m) {
@@ -1041,15 +1080,18 @@ int main(int argc, char *argv[])
     }
     const vtkIdType offset = 0;
     AppendRandomSamples(clusters, surface, n, offset, stratified, roi_span, max_overlap);
-  }
-  if (max_random > 0) {
-    if (max_points > 0 && max_random > max_points) {
-      max_random = max_points;
+    if (g_verbose) {
+      cerr << "Appended " << n << " random clusters" << endl;
     }
-    int n = max_random - static_cast<int>(clusters.size());
+  }
+  if (num_points > 0) {
+    int n = num_points - static_cast<int>(clusters.size());
     if (n > 0) {
       const vtkIdType offset = 0;
       AppendRandomSamples(clusters, surface, n, offset, stratified, roi_span, max_overlap);
+      if (g_verbose) {
+        cerr << "Appended " << n << " random clusters" << endl;
+      }
     }
   }
 
@@ -1058,7 +1100,7 @@ int main(int argc, char *argv[])
 
   // Print selected clusters
   if (delim != nullptr) {
-    Print(output, clusters, delim);
+    Print(surface, reference, clusters, delim);
   }
 
   // Write surface mesh with computed point data
@@ -1076,6 +1118,23 @@ int main(int argc, char *argv[])
     if (centered) {
       for (vtkIdType i = 0; i < points->GetNumberOfPoints(); ++i) {
         points->SetPoint(i, clusters[i].center);
+      }
+    } else if (midpoints) {
+      double p[3], q[3];
+      vtkNew<vtkPointLocator> loc12, loc21;
+      loc12->SetDataSet(reference);
+      loc12->BuildLocator();
+      loc21->SetDataSet(surface);
+      loc21->BuildLocator();
+      vtkIdType offset = surface->GetNumberOfPoints();
+      for (vtkIdType i = 0; i < points->GetNumberOfPoints(); ++i) {
+        output->GetPoint(clusters[i].seed, p);
+        if (clusters[i].seed >= offset) {
+          surface->GetPoint(loc21->FindClosestPoint(p), q);
+        } else {
+          reference->GetPoint(loc12->FindClosestPoint(p), q);
+        }
+        points->SetPoint(i, .5 * (p[0] + q[0]), .5 * (p[1] + q[1]), .5 * (p[2] + q[2]));
       }
     } else {
       for (vtkIdType i = 0; i < points->GetNumberOfPoints(); ++i) {
