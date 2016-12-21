@@ -174,7 +174,7 @@ while IFS=, read SUBJECT SESSION; do
     CURRENT_DATABASE="$DATABASE"
     DATABASE="${CURRENT_DATABASE/.db/.next.db}"
     cp "$CURRENT_DATABASE" "$DATABASE"
-    run "$SCRIPT_DIR/select-regions-of-interest.py" "$DATABASE" $VERBOSE_FLAGS \
+    run "$SCRIPT_DIR/select-rois.py" "$DATABASE" $VERBOSE_FLAGS \
           --subject "$SUBJECT" \
           --session "$SESSION" \
           --surface "$WHITE_MATTER_SURFACE" \
