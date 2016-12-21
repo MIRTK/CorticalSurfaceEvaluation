@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ $# -ne 1 ]; then
+if [ $# -eq 0 ]; then
   echo "usage: $(basename "$BASH_SOURCE") <sessions>"
   exit 1
 fi
@@ -9,8 +9,8 @@ rev="$(mirtk info -revision)"
 top="$(cd $(dirname "$BASH_SOURCE") && pwd)"
 cfg="$top/config/recon-neonatal-cortex.cfg"
 tmp="$top/temp/rev-$rev"
-img="$top/images/rev-$rev"
 out="$top/meshes/rev-$rev"
+img="$top/images"
 
 mirtk recon-neonatal-cortex -v -v -d \
     --config "$cfg" --sessions "$@" \

@@ -1,28 +1,35 @@
 #!/bin/bash
 
-[ $# -eq 2 ] || {
-    echo "usage: $(basename "$BASH_SOURCE") <database> <sessions>"
+[ $# -ge 3 ] || {
+    echo "usage: $(basename "$BASH_SOURCE") <command> <database> <csv> [<sessions>...]"
     exit 1
 }
 
-DATABASE="$1"
-SUBJECTS_CSV="$2"
-TAKE_SCREENSHOTS=false
+COMMAND="$1"
+DATABASE="$2"
+SUBJECTS_CSV="$3"
+shift 3
+SESSIONS=("$@")
+
+case "$COMMAND" in
+  all|create|select-rois|take-screenshots) ;;
+  *) echo "Invalid <command> = $COMMAND" 1>&2; exit 1; ;;
+esac
 
 DATABASE_DIR="$(dirname "$DATABASE")"
 mkdir -p "$DATABASE_DIR" || exit 1
 DATABASE_DIR="$(cd "$DATABASE_DIR" && pwd)"
 
-SCRIPT_DIR="$(dirname "$BASH_SOURCE")"
-SCRIPT_DIR="$(cd "$SCRIPT_DIR" && pwd)"
-BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+BASE_DIR="$(dirname "$BASH_SOURCE")"
+BASE_DIR="$(cd "$SCRIPT_DIR" && pwd)"
+
+SCRIPT_DIR="$BASE_DIR/scripts"
 IMAGES_DIR="$BASE_DIR/images/t2w"
 LABELS_DIR="$BASE_DIR/labels/tissues"
 SURFACES_DIR="$BASE_DIR/meshes/rev-88c8266"
-SCREENSHOTS_DIR="$DATABASE_DIR/{subject}-{session}"
-TEMP_DIR="$BASE_DIR/temp"
-
 VOL2MESH_DIR="$BASE_DIR/meshes/v2.3"
+SCREENSHOTS_DIR="$DATABASE_DIR/{subject}-{session}"
 
 ROI_SPAN=40
 OVERLAP_SPAN=20
@@ -41,25 +48,7 @@ VERBOSE_FLAGS='-v -v'
 
 
 # -----------------------------------------------------------------------------
-# initialize database
-mkdir -p "$TEMP_DIR" || exit 1
-
-if [ ! -f "$DATABASE" ]; then
-  "$SCRIPT_DIR/create-tables.py" "$DATABASE" || exit 1
-  "$SCRIPT_DIR/import-scans.py" "$SUBJECTS_CSV" "$DATABASE" || exit 1
-fi
-
-INITIAL_SURFACE_ID=$(sqlite3 "$DATABASE" "SELECT OverlayId FROM Overlays WHERE Name = 'Initial surface'")
-WHITE_MATTER_SURFACE_ID=$(sqlite3 "$DATABASE" "SELECT OverlayId FROM Overlays WHERE Name = 'White matter surface'")
-VOL2MESH_SURFACE_ID=$(sqlite3 "$DATABASE" "SELECT OverlayId FROM Overlays WHERE Name = 'Vol2mesh surface'")
-
-echo
-echo "Initial surface ID      = $INITIAL_SURFACE_ID"
-echo "White matter surface ID = $WHITE_MATTER_SURFACE_ID"
-echo "Vol2mesh surface ID     = $VOL2MESH_SURFACE_ID"
-
-# -----------------------------------------------------------------------------
-# auxiliaries to query state of database
+# utility functions
 run()
 {
   if [ $PRINT_COMMAND = true ]; then
@@ -70,6 +59,9 @@ run()
   "$@" || exit 1
 }
 
+
+# -----------------------------------------------------------------------------
+# auxiliaries to query state of database
 get_number_of_rois()
 {
   sqlite3 "$DATABASE" "\
@@ -148,27 +140,9 @@ get_number_of_screenshots_with_vol2mesh_and_white_matter_surface()
 
 
 # -----------------------------------------------------------------------------
-while IFS=, read SUBJECT SESSION; do
-  [ ${SUBJECT:0:2} = 'CC' ] || continue
-
-  IMAGE="$IMAGES_DIR/$SUBJECT-${SESSION}.nii.gz"
-  LABELS="$LABELS_DIR/$SUBJECT-${SESSION}.nii.gz"
-
-  INITIAL_SURFACE="$SURFACES_DIR/$SUBJECT-$SESSION/cerebrum.vtp"
-  WHITE_MATTER_SURFACE="$SURFACES_DIR/$SUBJECT-$SESSION/white+internal.vtp"
-  VOL2MESH_SURFACE="$VOL2MESH_DIR/$SUBJECT-$SESSION/white+internal.vtp"
-
-  echo
-  echo "Subject $SUBJECT, session $SESSION"
-  echo
-  echo "Intensity image      = $IMAGE"
-  echo "Initial surface      = $INITIAL_SURFACE"
-  echo "White matter surface = $WHITE_MATTER_SURFACE"
-  echo "Vol2mesh surface     = $VOL2MESH_SURFACE"
-  echo "Temporary directory  = $TEMP_DIR"
-  echo
-
-  # select regions of interest
+# select ROIs from given scan
+select_rois()
+{
   n=$(get_number_of_rois)
   if [ $n -eq 0 ]; then
     CURRENT_DATABASE="$DATABASE"
@@ -194,9 +168,13 @@ while IFS=, read SUBJECT SESSION; do
   else
     echo "Found $n regions of interest in database"
   fi
+}
 
-  [ $TAKE_SCREENSHOTS = true ] || continue
 
+# -----------------------------------------------------------------------------
+# take all screenshots for selected ROIs from a given scan
+take_screenshots()
+{
   # save screenshots of whole slices with bounding boxes overlaid
   n=$(get_number_of_screenshots_with_bounding_boxes)
   if [ $n -eq 0 ]; then
@@ -308,5 +286,61 @@ while IFS=, read SUBJECT SESSION; do
   else
     echo "Found $n screenshots with both vol2mesh and white matter surfaces overlaid in database"
   fi
+}
 
-done < "$SUBJECTS_CSV"
+
+# -----------------------------------------------------------------------------
+# Run specified command for given scan
+process_scan()
+{
+  IMAGE="$IMAGES_DIR/$SUBJECT-${SESSION}.nii.gz"
+  INITIAL_SURFACE="$SURFACES_DIR/$SUBJECT-$SESSION/cerebrum.vtp"
+  WHITE_MATTER_SURFACE="$SURFACES_DIR/$SUBJECT-$SESSION/white+internal.vtp"
+  VOL2MESH_SURFACE="$VOL2MESH_DIR/$SUBJECT-$SESSION/white+internal.vtp"
+
+  echo
+  echo "Subject $SUBJECT, session $SESSION"
+  echo
+  echo "Intensity image      = $IMAGE"
+  echo "Initial surface      = $INITIAL_SURFACE"
+  echo "White matter surface = $WHITE_MATTER_SURFACE"
+  echo "Vol2mesh surface     = $VOL2MESH_SURFACE"
+  echo
+
+  case "$COMMAND" in
+    select-rois) select_rois; ;;
+    take-screenshots) take_screenshots; ;;
+    all) select_rois; take_screenshots; ;;
+  esac
+}
+
+
+# -----------------------------------------------------------------------------
+# MAIN
+if [ ! -f "$DATABASE" -o $COMMAND = 'create' ]; then
+  rm -f "$DATABASE" || exit 1
+  "$SCRIPT_DIR/create-tables.py" "$DATABASE" || exit 1
+  "$SCRIPT_DIR/import-scans.py" "$SUBJECTS_CSV" "$DATABASE" || exit 1
+  [ $COMMAND != 'create' ] || exit 0
+fi
+
+INITIAL_SURFACE_ID=$(sqlite3 "$DATABASE" "SELECT OverlayId FROM Overlays WHERE Name = 'Initial surface'")
+WHITE_MATTER_SURFACE_ID=$(sqlite3 "$DATABASE" "SELECT OverlayId FROM Overlays WHERE Name = 'White matter surface'")
+VOL2MESH_SURFACE_ID=$(sqlite3 "$DATABASE" "SELECT OverlayId FROM Overlays WHERE Name = 'Vol2mesh surface'")
+echo
+echo "Initial surface ID      = $INITIAL_SURFACE_ID"
+echo "White matter surface ID = $WHITE_MATTER_SURFACE_ID"
+echo "Vol2mesh surface ID     = $VOL2MESH_SURFACE_ID"
+
+if [ ${#SESSIONS[@]} -gt 0 ]; then
+  for arg in "${SESSIONS[@]}"; do
+    while IFS=- read SUBJECT SESSION; do
+      process_scan
+    done <<< "$arg"
+  done
+else
+  while IFS=, read SUBJECT SESSION; do
+    [ ${SUBJECT:0:2} = 'CC' ] || continue
+    process_scan
+  done < "$SUBJECTS_CSV"
+fi
