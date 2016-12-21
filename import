@@ -67,6 +67,7 @@ if [ ${#SESSIONS[@]} -gt 0 ]; then
   done
 else
   while IFS=, read SUBJECT SESSION; do
+    [ -n "$SUBJECT" ] || continue
     [ ${SUBJECT:0:2} = 'CC' ] || continue
     import
   done < "$CSV_NAME"
