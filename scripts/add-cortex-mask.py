@@ -97,13 +97,17 @@ if __name__ == '__main__':
                 args=[mesh, mesh],
                 opts={
                     'labels': mask,
-                    'dilation-radius': 0,
+                    'dilation-radius': .5,
                     'fill': True,
-                    'max-hole-size': 100,
+                    'max-hole-size': 1000,
                     'point-data': False,
                     'cell-data': True,
-                    'type': 'uchar',
                     'name': 'CortexMask'
                 }
+            )
+            mirtk.run(
+                'calculate-element-wise',
+                args=[mesh],
+                opts=[('cell-data', 'CortexMask'), ('out', mesh, 'uchar')]
             )
         os.remove(mask)
