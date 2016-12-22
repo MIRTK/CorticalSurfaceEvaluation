@@ -22,7 +22,7 @@ DATABASE_DIR="$(cd "$DATABASE_DIR" && pwd)"
 
 
 BASE_DIR="$(dirname "$BASH_SOURCE")"
-BASE_DIR="$(cd "$SCRIPT_DIR" && pwd)"
+BASE_DIR="$(cd "$BASE_DIR" && pwd)"
 
 SCRIPT_DIR="$BASE_DIR/scripts"
 IMAGES_DIR="$BASE_DIR/images/t2w"
@@ -340,6 +340,7 @@ if [ ${#SESSIONS[@]} -gt 0 ]; then
   done
 else
   while IFS=, read SUBJECT SESSION; do
+    [ -n "$SUBJECT" ] || continue
     [ ${SUBJECT:0:2} = 'CC' ] || continue
     process_scan
   done < "$SUBJECTS_CSV"
