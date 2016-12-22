@@ -16,5 +16,6 @@ mirtk recon-neonatal-cortex -v -v -d \
     --config "$cfg" --sessions "$@" \
     --ensure-pial-is-outside-white-surface \
     --temp "$tmp" --meshes "$out" --images "$img" \
-    --cerebrum --white --pial --keep-t1w-image --keep-t2w-image \
+    --cerebrum --white --pial \
+    --keep-t1w-image --keep-t2w-image -keep-regions-mask \
     --threads 8 --queue long
