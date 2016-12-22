@@ -28,6 +28,7 @@
 #include <vtkDataArray.h>
 #include <vtkFloatArray.h>
 #include <vtkIdTypeArray.h>
+#include <vtkUnsignedCharArray.h>
 #include <vtkGenericCell.h>
 #include <vtkPointData.h>
 #include <vtkCellData.h>
@@ -204,14 +205,14 @@ CellMaskToPointData(vtkPolyData *mesh, vtkSmartPointer<vtkDataArray> mask)
 
 
 // -----------------------------------------------------------------------------
-vtkSmartPointer<vtkDataArray>
-ErodePointMask(vtkPolyData *mesh, vtkSmartPointer<vtkDataArray> mask, int niter)
+vtkSmartPointer<vtkUnsignedCharArray>
+ErodePointMask(vtkPolyData *mesh, vtkSmartPointer<vtkUnsignedCharArray> mask, int niter)
 {
-  vtkSmartPointer<vtkDataArray> output = mask;
+  vtkSmartPointer<vtkUnsignedCharArray> output = mask;
   if (mask && niter > 1) {
     unsigned short ncells;
     vtkIdType npts, *pts, *cells;
-    vtkSmartPointer<vtkDataArray> input = mask;
+    vtkSmartPointer<vtkUnsignedCharArray> input = mask;
     output.TakeReference(mask->NewInstance());
     output->SetNumberOfComponents(1);
     output->SetNumberOfTuples(mask->GetNumberOfTuples());
@@ -224,18 +225,18 @@ ErodePointMask(vtkPolyData *mesh, vtkSmartPointer<vtkDataArray> mask, int niter)
         output->SetNumberOfTuples(input->GetNumberOfTuples());
         output->SetName(input->GetName());
       } else if (iter > 1) {
-        vtkSmartPointer<vtkDataArray> buffer = input;
+        vtkSmartPointer<vtkUnsignedCharArray> buffer = input;
         input  = output;
         output = buffer;
       }
       for (vtkIdType ptId = 0; ptId < mesh->GetNumberOfPoints(); ++ptId) {
-        output->SetComponent(ptId, 0, 1.);
+        output->SetValue(ptId, 1);
         mesh->GetPointCells(ptId, ncells, cells);
         for (unsigned short i = 0; i < ncells; ++i) {
           mesh->GetCellPoints(cells[i], npts, pts);
           for (vtkIdType j = 0; j < npts; ++j) {
-            if (input->GetComponent(pts[j], 0) == 0.) {
-              output->SetComponent(ptId, 0, 0.);
+            if (input->GetValue(pts[j]) == 0) {
+              output->SetValue(ptId, 0);
               i = ncells;
               break;
             }
@@ -249,17 +250,28 @@ ErodePointMask(vtkPolyData *mesh, vtkSmartPointer<vtkDataArray> mask, int niter)
 
 
 // -----------------------------------------------------------------------------
-vtkSmartPointer<vtkDataArray> PointMask(vtkPolyData *mesh, const char *name, int erode = 0)
+vtkSmartPointer<vtkUnsignedCharArray> PointMask(vtkPolyData *mesh, const char *name, int erode = 0)
 {
   vtkSmartPointer<vtkDataArray> mask;
   if (name) {
     mask = mesh->GetPointData()->GetArray(name);
-    if (!mask) {
+    if (mask == nullptr) {
       vtkSmartPointer<vtkDataArray> cmask = mesh->GetCellData()->GetArray(name);
       if (cmask) mask = CellMaskToPointData(mesh, cmask);
     }
+    if (mask == nullptr) {
+      cerr << "Input surface mesh has not point/cell data array named " << name << endl;
+      exit(1);
+    }
   }
-  return ErodePointMask(mesh, mask, erode);
+  vtkSmartPointer<vtkUnsignedCharArray> output = vtkUnsignedCharArray::SafeDownCast(mask);
+  if (output == nullptr) {
+    output = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    output->DeepCopy(mask);
+    output->CopyComponentNames(mask);
+    output->SetName(mask->GetName());
+  }
+  return ErodePointMask(mesh, output, erode);
 }
 
 
@@ -267,7 +279,7 @@ vtkSmartPointer<vtkDataArray> PointMask(vtkPolyData *mesh, const char *name, int
 vtkSmartPointer<vtkFloatArray>
 PointToSurfaceDistances(vtkSmartPointer<vtkPolyData>  surface,
                         vtkSmartPointer<vtkPolyData>  reference,
-                        vtkSmartPointer<vtkDataArray> mask = nullptr)
+                        vtkSmartPointer<vtkUnsignedCharArray> mask = nullptr)
 {
   vtkSmartPointer<vtkFloatArray> dists;
   dists = vtkSmartPointer<vtkFloatArray>::New();
@@ -286,7 +298,7 @@ PointToSurfaceDistances(vtkSmartPointer<vtkPolyData>  surface,
   int subId;
 
   for (vtkIdType ptId = 0; ptId < surface->GetNumberOfPoints(); ++ptId) {
-    if (mask && mask->GetComponent(ptId, 0) == 0.) {
+    if (mask && mask->GetValue(ptId) == 0) {
       dists->SetValue(ptId, 0.f);
     } else {
       surface->GetPoint(ptId, p);
@@ -480,7 +492,7 @@ FirstClusters(Array<Cluster> &clusters,
               int erode_mask = 0,
               vtkIdType start_label = 1)
 {
-  vtkSmartPointer<vtkDataArray>  mask  = PointMask(surface, mask_name, erode_mask);
+  vtkSmartPointer<vtkUnsignedCharArray> mask = PointMask(surface, mask_name, erode_mask);
   vtkSmartPointer<vtkFloatArray> dists = PointToSurfaceDistances(surface, reference, mask);
 
   vtkSmartPointer<vtkIdTypeArray> labels;
@@ -508,8 +520,8 @@ JointClusters(Array<Cluster> &clusters,
               int erode_mask = 0,
               vtkIdType start_label = 1)
 {
-  vtkSmartPointer<vtkDataArray>  mask1 = PointMask(surface1, mask_name, erode_mask);
-  vtkSmartPointer<vtkDataArray>  mask2 = PointMask(surface2, mask_name, erode_mask);
+  vtkSmartPointer<vtkUnsignedCharArray> mask1 = PointMask(surface1, mask_name, erode_mask);
+  vtkSmartPointer<vtkUnsignedCharArray> mask2 = PointMask(surface2, mask_name, erode_mask);
 
   vtkSmartPointer<vtkFloatArray> dist12 = PointToSurfaceDistances(surface1, surface2, mask1);
   vtkSmartPointer<vtkFloatArray> dist21 = PointToSurfaceDistances(surface2, surface1, mask2);
@@ -540,6 +552,15 @@ JointClusters(Array<Cluster> &clusters,
 
   vtkSmartPointer<vtkFloatArray> dists;
   dists = vtkFloatArray::SafeDownCast(mesh->GetPointData()->GetArray("Distance"));
+
+  if (mesh->GetPointData()->HasArray(mask_name) == 0) {
+    cerr << "Output of vtkAppendPolyData is missing the " << mask_name << " point data array!" << endl;
+    exit(1);
+  }
+  if (dists == nullptr) {
+    cerr << "Output of vtkAppendPolyData is missing the Distance point data array!" << endl;
+    exit(1);
+  }
 
   vtkSmartPointer<vtkCellArray> lines;
   lines = vtkSmartPointer<vtkCellArray>::New();
@@ -782,8 +803,8 @@ Array<Cluster> ReduceClusters(const Array<Cluster> &clusters, float span, float 
 
 // -----------------------------------------------------------------------------
 void AppendRandomSamples(Array<Cluster> &clusters, vtkPolyData *mesh, int n,
-                         vtkIdType offset = 0, bool stratified = true,
-                         float span = 0.f, float max_overlap = 1.f)
+                         const char *mask_name = nullptr, vtkIdType offset = 0,
+                         bool stratified = true, float span = 0.f, float max_overlap = 1.f)
 {
   double p[3];
   float roi[6];
@@ -791,6 +812,15 @@ void AppendRandomSamples(Array<Cluster> &clusters, vtkPolyData *mesh, int n,
   Cluster cluster;
   cluster.label = 0;
   cluster.size = 1;
+
+  vtkDataArray *mask = nullptr;
+  if (mask_name) {
+    mask = mesh->GetPointData()->GetArray(mask_name);
+    if (mask == nullptr) {
+      cerr << "Error: Surface mesh has no point data array named " << mask_name << endl;
+      exit(1);
+    }
+  }
 
   vtkNew<vtkMaskPoints> sampler;
   sampler->SetInputData(mesh);
@@ -810,6 +840,7 @@ void AppendRandomSamples(Array<Cluster> &clusters, vtkPolyData *mesh, int n,
     int k = 0;
     vtkPoints * const points = sampler->GetOutput()->GetPoints();
     for (vtkIdType ptId = 0; ptId < points->GetNumberOfPoints(); ++ptId) {
+      if (mask && mask->GetComponent(ptId, 0) == 0.) continue;
       points->GetPoint(ptId, p);
       cluster.center[0] = static_cast<float>(p[0]);
       cluster.center[1] = static_cast<float>(p[1]);
@@ -1079,7 +1110,7 @@ int main(int argc, char *argv[])
       }
     }
     const vtkIdType offset = 0;
-    AppendRandomSamples(clusters, surface, n, offset, stratified, roi_span, max_overlap);
+    AppendRandomSamples(clusters, output, n, mask_name, offset, stratified, roi_span, max_overlap);
     if (g_verbose) {
       cerr << "Appended " << n << " random clusters" << endl;
     }
@@ -1088,7 +1119,7 @@ int main(int argc, char *argv[])
     int n = num_points - static_cast<int>(clusters.size());
     if (n > 0) {
       const vtkIdType offset = 0;
-      AppendRandomSamples(clusters, surface, n, offset, stratified, roi_span, max_overlap);
+      AppendRandomSamples(clusters, output, n, mask_name, offset, stratified, roi_span, max_overlap);
       if (g_verbose) {
         cerr << "Appended " << n << " random clusters" << endl;
       }
