@@ -12,7 +12,7 @@ shift 3
 SESSIONS=("$@")
 
 case "$COMMAND" in
-  all|create|select-rois|take-screenshots) ;;
+  add|init|select-rois|take-screenshots|sbatch) ;;
   *) echo "Invalid <command> = $COMMAND" 1>&2; exit 1; ;;
 esac
 
@@ -25,25 +25,28 @@ BASE_DIR="$(dirname "$BASH_SOURCE")"
 BASE_DIR="$(cd "$BASE_DIR" && pwd)"
 
 SCRIPT_DIR="$BASE_DIR/scripts"
+LOGS_DIR="$BASE_DIR/logs/eval-db"
 IMAGES_DIR="$BASE_DIR/images/t2w"
 LABELS_DIR="$BASE_DIR/labels/tissues"
 SURFACES_DIR="$BASE_DIR/meshes/rev-88c8266"
 VOL2MESH_DIR="$BASE_DIR/meshes/v2.3"
 SCREENSHOTS_DIR="$DATABASE_DIR/{subject}-{session}"
 
-ROI_SPAN=40
-OVERLAP_SPAN=20
-OVERLAP_RATIO=.5
-NUM_ROIS=50
-RANDOM_RATIO=.2
+NUM_ROIS=40
+ROI_SPAN=50
+OVERLAP_SPAN=25
+MAX_OVERLAP_RATIO=.67
+MIN_RANDOM_RATIO=.25
+MASK_NAME='CortexMask'
+MASK_EROSION=10
 
-MIN_INTENSITY=10
-MAX_INTENSITY=30
+MIN_INTENSITY=12
+MAX_INTENSITY=28
 NUM_SUBDIVS=0
 ROI_OFFSETS=(0)
 LINE_WIDTH=3
 
-PRINT_COMMAND=false
+PRINT_COMMAND=true
 VERBOSE_FLAGS='-v -v'
 
 
@@ -148,18 +151,25 @@ select_rois()
     CURRENT_DATABASE="$DATABASE"
     DATABASE="${CURRENT_DATABASE/.db/.next.db}"
     cp "$CURRENT_DATABASE" "$DATABASE"
-    run "$SCRIPT_DIR/select-rois.py" "$DATABASE" $VERBOSE_FLAGS \
+    verbose=''
+    if [ $PRINT_COMMAND = true ]; then
+      verbose="$verbose -v"
+    fi
+    if [ -n "$VERBOSE_FLAGS" ]; then
+      verbose="$verbose -v"
+    fi
+    run "$SCRIPT_DIR/select-rois.py" "$DATABASE" $verbose \
           --subject "$SUBJECT" \
           --session "$SESSION" \
           --surface "$WHITE_MATTER_SURFACE" \
           --reference "$VOL2MESH_SURFACE" \
           --cluster-centers \
-          --mask-name 'CortexMask' \
-          --mask-erosion 5 \
+          --mask-name $MASK_NAME \
+          --mask-erosion $MASK_EROSION \
           --roi-span $ROI_SPAN \
           --overlap-span $OVERLAP_SPAN \
-          --max-overlap-ratio $OVERLAP_RATIO \
-          --random-points-ratio $RANDOM_RATIO \
+          --max-overlap-ratio $MAX_OVERLAP_RATIO \
+          --random-points-ratio $MIN_RANDOM_RATIO \
           -n $NUM_ROIS
     n=$(get_number_of_rois)
     mv -f "$DATABASE" "$CURRENT_DATABASE" || exit 1
@@ -246,7 +256,7 @@ take_screenshots()
   fi
 
   # save screenshots with both initial and white matter surface overlaid
-  skip=true
+  skip=false
   [ $skip = true ] || {
     n=$(get_number_of_screenshots_with_initial_and_white_matter_surface)
     if [ $n -eq 0 ]; then
@@ -310,19 +320,35 @@ process_scan()
   case "$COMMAND" in
     select-rois) select_rois; ;;
     take-screenshots) take_screenshots; ;;
-    all) select_rois; take_screenshots; ;;
+    add) select_rois; take_screenshots; ;;
+    sbatch)
+      JOB_NAME="eval-db-$SUBJECT-$SESSION"
+      sbatch --mem=1G -n 1 -c 1 -p 'short' \
+             -o "$LOGS_DIR/$JOB_NAME-%j.out" \
+             -e "$LOGS_DIR/$JOB_NAME-%j.err" \
+             -J "$JOB_NAME" <<END_OF_SCRIPT
+#!/bin/sh
+export DISPLAY=:0
+exec "$BASH_SOURCE" add "$DATABASE" "$SUBJECTS_CSV" "$SUBJECT-$SESSION"
+END_OF_SCRIPT
+      ;;
   esac
 }
 
 
 # -----------------------------------------------------------------------------
 # MAIN
-if [ ! -f "$DATABASE" -o $COMMAND = 'create' ]; then
+if [ $COMMAND = 'sbatch' ]; then
+  mkdir -p "$LOGS_DIR" || exit 1
+fi
+
+if [ ! -f "$DATABASE" -o $COMMAND = 'init' ]; then
   rm -f "$DATABASE" || exit 1
   "$SCRIPT_DIR/create-tables.py" "$DATABASE" || exit 1
-  "$SCRIPT_DIR/import-scans.py" "$SUBJECTS_CSV" "$DATABASE" || exit 1
-  [ $COMMAND != 'create' ] || exit 0
 fi
+
+"$SCRIPT_DIR/import-scans.py" "$SUBJECTS_CSV" "$DATABASE" || exit 1
+[ $COMMAND != 'init' ] || exit 0
 
 INITIAL_SURFACE_ID=$(sqlite3 "$DATABASE" "SELECT OverlayId FROM Overlays WHERE Name = 'Initial surface'")
 WHITE_MATTER_SURFACE_ID=$(sqlite3 "$DATABASE" "SELECT OverlayId FROM Overlays WHERE Name = 'White matter surface'")
