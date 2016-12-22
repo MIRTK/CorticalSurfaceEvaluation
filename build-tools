@@ -1,0 +1,14 @@
+#!/bin/bash
+
+base_dir="$(cd "$(dirname "$BASH_SOURCE")" && pwd)"
+source_dir="$base_dir/tools"
+build_dir="$base_dir/tools/build"
+prefix_dir="$base_dir"
+
+[ -n "build_dir" ] || exit 1
+mkdir -p "$build_dir" || exit 1
+cd "$build_dir" || exit 1
+
+cmake -DCMAKE_INSTALL_PREFIX="$prefix_dir" "$source_dir" || exit 1
+cmake --build "$build_dir" --config Release --target install || exit 1
+rm -rf "$build_dir" || exit 1
