@@ -76,12 +76,13 @@ struct Cluster
   vtkIdType seed;
   vtkIdType size;
   float     center[3];
+  float     total;
 
-  Cluster() : label(-1), seed(-1), size(0), center{0.f, 0.f, 0.f} {}
+  Cluster() : label(-1), seed(-1), size(0), center{0.f, 0.f, 0.f}, total(0.f) {}
 
   bool operator <(const Cluster &rhs) const
   {
-    return size < rhs.size;
+    return total < rhs.total;
   }
 };
 
@@ -152,7 +153,7 @@ void Print(vtkPolyData *surface, vtkPolyData *reference,
   loc21->SetDataSet(surface);
   loc21->BuildLocator();
 
-  cout << "ClusterId,ClusterSize,SeedId,SeedX,SeedY,SeedZ,CenterX,CenterY,CenterZ,MiddleX,MiddleY,MiddleZ\n";
+  cout << "ClusterId,ClusterSize,AvgDistance,SeedId,SeedX,SeedY,SeedZ,CenterX,CenterY,CenterZ,MiddleX,MiddleY,MiddleZ\n";
   for (const auto &cluster : clusters) {
     if (cluster.seed >= offset) {
       reference->GetPoint(cluster.seed - offset, p);
@@ -161,7 +162,10 @@ void Print(vtkPolyData *surface, vtkPolyData *reference,
       surface->GetPoint(cluster.seed, p);
       reference->GetPoint(loc12->FindClosestPoint(p), q);
     }
-    cout << cluster.label << delim << cluster.size << delim << cluster.seed
+    cout << cluster.label
+         << delim << cluster.size
+         << delim << (cluster.total / cluster.size)
+         << delim << cluster.seed
          << delim << p[0] << delim << p[1] << delim << p[2]
          << delim << cluster.center[0]
          << delim << cluster.center[1]
@@ -362,7 +366,7 @@ vtkIdType NextSeed(Array<vtkIdType> &seeds, vtkFloatArray *dists, vtkIdTypeArray
 
 // -----------------------------------------------------------------------------
 vtkIdType GrowCluster(vtkPolyData *mesh, vtkIdType seed,
-                      vtkIdType label, float center[3],
+                      vtkIdType label, float center[3], float &total,
                       vtkFloatArray *dists, vtkIdTypeArray *labels,
                       float threshold)
 {
@@ -371,7 +375,7 @@ vtkIdType GrowCluster(vtkPolyData *mesh, vtkIdType seed,
   vtkIdType ptId, npts, *pts, *cells, size = 0;
   Queue<vtkIdType> active;
   active.push(seed);
-  center[0] = center[1] = center[2] = 0.f;
+  center[0] = center[1] = center[2] = total = 0.f;
   while (!active.empty()) {
     ptId = active.front();
     active.pop();
@@ -382,6 +386,7 @@ vtkIdType GrowCluster(vtkPolyData *mesh, vtkIdType seed,
       center[0] += static_cast<float>(p[0]);
       center[1] += static_cast<float>(p[1]);
       center[2] += static_cast<float>(p[2]);
+      total += dists->GetValue(ptId);
       mesh->GetPointCells(ptId, ncells, cells);
       for (unsigned short i = 0; i < ncells; ++i) {
         mesh->GetCellPoints(cells[i], npts, pts);
@@ -468,7 +473,7 @@ Array<Cluster> DistantClusters(vtkSmartPointer<vtkPolyData> surface,
   Cluster cluster;
   cluster.label = start_label;
   while ((cluster.seed = NextSeed(seeds, dists, labels, min_seed_dist)) != -1) {
-    cluster.size = GrowCluster(surface, cluster.seed, cluster.label, cluster.center, dists, labels, threshold);
+    cluster.size = GrowCluster(surface, cluster.seed, cluster.label, cluster.center, cluster.total, dists, labels, threshold);
     if (cluster.size < min_size) {
       DiscardCluster(labels, cluster.label);
     } else {
@@ -553,7 +558,7 @@ JointClusters(Array<Cluster> &clusters,
   vtkSmartPointer<vtkFloatArray> dists;
   dists = vtkFloatArray::SafeDownCast(mesh->GetPointData()->GetArray("Distance"));
 
-  if (mesh->GetPointData()->HasArray(mask_name) == 0) {
+  if (mask_name != nullptr && mesh->GetPointData()->HasArray(mask_name) == 0) {
     cerr << "Output of vtkAppendPolyData is missing the " << mask_name << " point data array!" << endl;
     exit(1);
   }
@@ -803,8 +808,10 @@ Array<Cluster> ReduceClusters(const Array<Cluster> &clusters, float span, float 
 
 // -----------------------------------------------------------------------------
 void AppendRandomSamples(Array<Cluster> &clusters, vtkPolyData *mesh, int n,
-                         const char *mask_name = nullptr, vtkIdType offset = 0,
-                         bool stratified = true, float span = 0.f, float max_overlap = 1.f)
+                         vtkFloatArray *dists = nullptr,
+                         vtkUnsignedCharArray *mask = nullptr,
+                         vtkIdType offset = 0, bool stratified = true,
+                         float span = 0.f, float max_overlap = 1.f)
 {
   double p[3];
   float roi[6];
@@ -812,18 +819,27 @@ void AppendRandomSamples(Array<Cluster> &clusters, vtkPolyData *mesh, int n,
   Cluster cluster;
   cluster.label = 0;
   cluster.size = 1;
+  cluster.total = 0.f;
 
-  vtkDataArray *mask = nullptr;
-  if (mask_name) {
-    mask = mesh->GetPointData()->GetArray(mask_name);
-    if (mask == nullptr) {
-      cerr << "Error: Surface mesh has no point data array named " << mask_name << endl;
-      exit(1);
+  vtkSmartPointer<vtkPolyData> samples;
+  if (mask) {
+    vtkSmartPointer<vtkPoints> points;
+    points = vtkSmartPointer<vtkPoints>::New();
+    points->Allocate(mesh->GetNumberOfPoints());
+    for (vtkIdType ptId = 0; ptId < mesh->GetNumberOfPoints(); ++ptId) {
+      mesh->GetPoint(ptId, p);
+      if (mask->GetValue(ptId + offset) != 0) {
+        points->InsertNextPoint(p);
+      }
     }
+    samples = vtkSmartPointer<vtkPolyData>::New();
+    samples->SetPoints(points);
+  } else {
+    samples = mesh;
   }
 
   vtkNew<vtkMaskPoints> sampler;
-  sampler->SetInputData(mesh);
+  sampler->SetInputData(samples);
   sampler->RandomModeOn();
   sampler->SetMaximumNumberOfPoints(n);
   sampler->SetRandomModeType(stratified ? 2 : 1);
@@ -840,11 +856,13 @@ void AppendRandomSamples(Array<Cluster> &clusters, vtkPolyData *mesh, int n,
     int k = 0;
     vtkPoints * const points = sampler->GetOutput()->GetPoints();
     for (vtkIdType ptId = 0; ptId < points->GetNumberOfPoints(); ++ptId) {
-      if (mask && mask->GetComponent(ptId, 0) == 0.) continue;
       points->GetPoint(ptId, p);
       cluster.center[0] = static_cast<float>(p[0]);
       cluster.center[1] = static_cast<float>(p[1]);
       cluster.center[2] = static_cast<float>(p[2]);
+      if (dists) {
+        cluster.total = dists->GetValue(ptId + offset);
+      }
       if (span > 0.f && max_overlap < 1.f) {
         Bounds(cluster.center, span, roi);
         if (OverlapRatio(clusters, span, roi) > max_overlap) {
@@ -1076,6 +1094,11 @@ int main(int argc, char *argv[])
   // Sort clusters by size
   sort(clusters.rbegin(), clusters.rend());
   vtkIdTypeArray *labels = vtkIdTypeArray::SafeDownCast(output->GetPointData()->GetArray("ClusterId"));
+  vtkUnsignedCharArray *mask = nullptr;
+  if (mask_name) {
+    mask = vtkUnsignedCharArray::SafeDownCast(output->GetPointData()->GetArray(mask_name));
+  }
+  vtkFloatArray *dists = vtkFloatArray::SafeDownCast(output->GetPointData()->GetArray("Distance"));
 
   // Reduce number of clusters
   if (max_overlap < 1.f) {
@@ -1110,7 +1133,7 @@ int main(int argc, char *argv[])
       }
     }
     const vtkIdType offset = 0;
-    AppendRandomSamples(clusters, output, n, mask_name, offset, stratified, roi_span, max_overlap);
+    AppendRandomSamples(clusters, surface, n, dists, mask, offset, stratified, roi_span, max_overlap);
     if (g_verbose) {
       cerr << "Appended " << n << " random clusters" << endl;
     }
@@ -1119,7 +1142,7 @@ int main(int argc, char *argv[])
     int n = num_points - static_cast<int>(clusters.size());
     if (n > 0) {
       const vtkIdType offset = 0;
-      AppendRandomSamples(clusters, output, n, mask_name, offset, stratified, roi_span, max_overlap);
+      AppendRandomSamples(clusters, surface, n, dists, mask, offset, stratified, roi_span, max_overlap);
       if (g_verbose) {
         cerr << "Appended " << n << " random clusters" << endl;
       }
