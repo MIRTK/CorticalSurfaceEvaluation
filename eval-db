@@ -190,7 +190,7 @@ take_screenshots()
   # determine intensity range
   local range=(10 30)
   if [ -z "$MIN_INTENSITY" -o -z "$MAX_INTENSITY" ]; then
-    range=($("$SCRIPT_DIR/calculate-intensity-range.py" "$IMAGE" -tissues "$LABELS_DIR/$SUBJECT-$SESSION.nii.gz"))
+    range=($("$SCRIPT_DIR/calculate-intensity-range.py" "$IMAGE" -tissues "$LABELS_DIR/$SUBJECT-$SESSION.nii.gz" -lower-sigma 5 -upper-sigma 4))
   fi
   [ -z "$MIN_INTENSITY" ] || range[0]=$MIN_INTENSITY
   [ -z "$MAX_INTENSITY" ] || range[1]=$MAX_INTENSITY

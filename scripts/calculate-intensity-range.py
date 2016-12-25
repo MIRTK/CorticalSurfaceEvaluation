@@ -14,6 +14,10 @@ if __name__ == '__main__':
     parser.add_argument('image', help="Intensity image")
     parser.add_argument('-tissues', '--tissues', help="Tissue labels")
     parser.add_argument('-mask', '--mask', help="White matter mask")
+    parser.add_argument('-lower-sigma', '--lower-sigma', default=5, type=float,
+                        help="Standard deviation of lower intensity threshold")
+    parser.add_argument('-upper-sigma', '--upper-sigma', default=5, type=float,
+                        help="Standard deviation of upper intensity threshold")
     args = parser.parse_args()
 
     if args.mask:
@@ -32,6 +36,6 @@ if __name__ == '__main__':
     out = out.split(',')
     mean = float(out[0])
     stdev = float(out[1])
-    print(str(mean - 5 * stdev) + " " + str(mean + 5 * stdev))
+    print(str(mean - args.lower_sigma * stdev) + " " + str(mean + args.upper_sigma * stdev))
     if not args.mask:
         os.remove(mask)
