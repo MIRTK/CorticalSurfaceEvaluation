@@ -40,8 +40,10 @@ MIN_RANDOM_RATIO=.25
 MASK_NAME='CortexMask'
 MASK_EROSION=10
 
-MIN_INTENSITY=12
-MAX_INTENSITY=28
+#MIN_INTENSITY=12
+#MAX_INTENSITY=28
+MIN_INTENSITY=
+MAX_INTENSITY=
 NUM_SUBDIVS=0
 ROI_OFFSETS=(0)
 LINE_WIDTH=3
@@ -185,13 +187,21 @@ select_rois()
 # take all screenshots for selected ROIs from a given scan
 take_screenshots()
 {
+  # determine intensity range
+  local range=(10 30)
+  if [ -z "$MIN_INTENSITY" -o -z "$MAX_INTENSITY" ]; then
+    range=($("$SCRIPT_DIR/calculate-intensity-range.py" "$IMAGE" -tissues "$LABELS_DIR/$SUBJECT-$SESSION.nii.gz"))
+  fi
+  [ -z "$MIN_INTENSITY" ] || range[0]=$MIN_INTENSITY
+  [ -z "$MAX_INTENSITY" ] || range[1]=$MAX_INTENSITY
+
   # save screenshots of whole slices with bounding boxes overlaid
   n=$(get_number_of_screenshots_with_bounding_boxes)
   if [ $n -eq 0 ]; then
     run "$SCRIPT_DIR/take-screenshots-of-roi-bounds.py" "$DATABASE" $VERBOSE_FLAGS \
         --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
         --prefix "$SCREENSHOTS_DIR/roi-bounds" \
-        --range $MIN_INTENSITY $MAX_INTENSITY \
+        --range ${range[@]} \
         --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
         --line-width $LINE_WIDTH
     n=$(get_number_of_screenshots_with_bounding_boxes)
@@ -210,7 +220,7 @@ take_screenshots()
           --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
           --overlay $INITIAL_SURFACE_ID "$INITIAL_SURFACE" \
           --prefix "$SCREENSHOTS_DIR/roi-initial-surface" \
-          --range $MIN_INTENSITY $MAX_INTENSITY \
+          --range ${range[@]} \
           --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
           --line-width $LINE_WIDTH
       n=$(get_number_of_screenshots_with_initial_surface)
@@ -228,7 +238,7 @@ take_screenshots()
         --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
         --overlay $WHITE_MATTER_SURFACE_ID "$WHITE_MATTER_SURFACE" \
         --prefix "$SCREENSHOTS_DIR/roi-white-matter-surface" \
-        --range $MIN_INTENSITY $MAX_INTENSITY \
+        --range ${range[@]} \
         --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
         --line-width $LINE_WIDTH
     n=$(get_number_of_screenshots_with_white_matter_surface)
@@ -245,7 +255,7 @@ take_screenshots()
         --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
         --overlay $VOL2MESH_SURFACE_ID "$VOL2MESH_SURFACE" \
         --prefix "$SCREENSHOTS_DIR/roi-vol2mesh-surface" \
-        --range $MIN_INTENSITY $MAX_INTENSITY \
+        --range ${range[@]} \
         --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
         --line-width $LINE_WIDTH
     n=$(get_number_of_screenshots_with_vol2mesh_surface)
@@ -266,7 +276,7 @@ take_screenshots()
             --overlay $INITIAL_SURFACE_ID "$INITIAL_SURFACE" \
             --overlay $WHITE_MATTER_SURFACE_ID "$WHITE_MATTER_SURFACE" \
             --prefix "$SCREENSHOTS_DIR/roi-initial-and-white-matter-surface" \
-            --range $MIN_INTENSITY $MAX_INTENSITY \
+            --range ${range[@]} \
             --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
             --line-width $LINE_WIDTH \
             --shuffle-colors
@@ -286,7 +296,7 @@ take_screenshots()
         --overlay $WHITE_MATTER_SURFACE_ID "$WHITE_MATTER_SURFACE" \
         --overlay $VOL2MESH_SURFACE_ID "$VOL2MESH_SURFACE" \
         --prefix "$SCREENSHOTS_DIR/roi-vol2mesh-and-white-matter-surface" \
-        --range $MIN_INTENSITY $MAX_INTENSITY \
+        --range ${range[@]} \
         --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
         --line-width $LINE_WIDTH \
         --shuffle-colors
