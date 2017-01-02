@@ -178,6 +178,7 @@ function hideActivePage() {
 
 function showPage(name) {
   $("html").off('keyup');
+  $('#nav-undo').hide();
   $('#container').hide();
   resetCompPage();
   global.activeTask = 0;
@@ -689,11 +690,13 @@ function updatePercentageDone(taskName) {
   if (isNaN(m) || isNaN(n)) {
     $("#" + taskName + " .done").text('0%');
   } else {
-    var v = (100 - m/n * 100).toFixed(0) + '%';
-    if (v == '100%' && activePage() == 'open') {
+    var v;
+    if (m == 0 && activePage() == 'open') {
       v = 'Completed!';
+    } else {
+      v = (100 - m/n * 100).toFixed(0) + '%';
     }
-    $("#" + taskName + " .done").text(v);   
+    $("#" + taskName + " .done").text(v);
   }
 }
 
@@ -809,6 +812,35 @@ function saveQualityScore(score) {
   global.db.exec(query, onQualityScoreSaved);
 }
 
+function undoLastQualityScore()
+{
+  $("html").off("keyup");
+  $("#scores button").off("click");
+  var query = "SELECT ScreenshotId, Score FROM EvaluationScores WHERE RaterId = ";
+  query += global.raterId + " ORDER BY _rowid_ DESC LIMIT 1";
+  global.db.get(query, function (err, row) {
+    if (err) {
+      showErrorMessage(err);
+    } else if (row['Score'] == 0) {
+      showErrorMessage("Cannot undo Discard operation");
+    } else {
+      var id = row['ScreenshotId'];
+      global.evalScreenshotId[global.activeTask] = id;
+      global.db.run("DELETE FROM EvaluationScores WHERE ScreenshotId = " + id + " AND RaterId = " + global.raterId, function (err) {
+        if (err) {
+          showErrorMessage(err);
+          global.evalScreenshotId[global.activeTask] = 0;
+        } else {
+          clearErrors();
+          $('#container').show();
+        }
+        global.evalROIScreenshotId[global.activeTask] = 0;
+        updateEvalPage();
+      });
+    }
+  });
+}
+
 function onQualityScoreSaved(err) {
   if (err) {
     global.db.exec('ROLLBACK;');
@@ -861,11 +893,28 @@ function initEvalPage(task) {
   updateEvalPage();
 }
 
+function updateUndoLink() {
+  $('#nav-undo').off("click");
+  $('#nav-undo').hide();
+  var query = "SELECT * FROM EvaluationScores WHERE RaterId = " + global.raterId + " AND NOT Score IS NULL LIMIT 1";
+  global.db.get(query, function (err, row) {
+    if (err) {
+      showErrorMessage(err);
+    } else if (row) {
+      $('#nav-undo').click(function (event) {
+        undoLastQualityScore();
+      });
+      $('#nav-undo').show();
+    }
+  });
+}
+
 function updateEvalPage() {
   $("#eval-" + global.activeTask).hide();
   queryTotalNumberOfEvaluationSets();
   queryRemainingNumberOfEvaluationSets();
   queryNextEvalScreenshot();
+  updateUndoLink();
 }
 
 // ----------------------------------------------------------------------------
