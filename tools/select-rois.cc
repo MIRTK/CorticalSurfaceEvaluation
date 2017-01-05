@@ -1387,13 +1387,16 @@ int main(int argc, char *argv[])
     clusters = ReduceClusters(clusters, roi_span, max_overlap);
   }
   if (g_verbose) {
-    cerr << "Selected " << clusters.size() << " distant clusters" << endl;
+    cerr << "Found " << clusters.size() << " distant clusters" << endl;
   }
 
   // Truncate number of clusters
   if (max_points > 0) {
     const size_t n = static_cast<size_t>(max_points);
     if (clusters.size() > n) {
+      if (g_verbose) {
+        cerr << "Discarded " << clusters.size() - n << " clusters" << endl;
+      }
       for (size_t i = n; i < clusters.size(); ++i) {
         DiscardCluster(labels, clusters[i].label);
       }
@@ -1408,6 +1411,9 @@ int main(int argc, char *argv[])
     if (max_points > 0) {
       size_t m = static_cast<size_t>(max(0, max_points - n));
       if (clusters.size() > m) {
+        if (g_verbose) {
+          cerr << "Discarded " << clusters.size() - m << " clusters" << endl;
+        }
         for (size_t i = m; i < clusters.size(); ++i) {
           DiscardCluster(labels, clusters[i].label);
         }
