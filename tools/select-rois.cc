@@ -1122,16 +1122,21 @@ int BestSliceView(mirtk::Image &image, vtkPolyData *surface, vtkPolyData *refere
     image.ImageToWorld(n);
     cut[0] = Cut(surface,   p, n, radius);
     cut[1] = Cut(reference, p, n, radius);
-    for (int j = 0; j < 2; ++j) {
-      nloops[i] = 0;
-      for (auto loop : Loops(cut[j], p)) {
-        if ((loop.inside || loop.center.Distance(p) < maxdist) && lrange[0] <= loop.length && loop.length <= lrange[1]) {
-          ++nloops[i];
+    if (cut[0]->GetNumberOfPoints() > 0 && cut[1]->GetNumberOfPoints() > 0) {
+      for (int j = 0; j < 2; ++j) {
+        nloops[i] = 0;
+        for (auto loop : Loops(cut[j], p)) {
+          if ((loop.inside || loop.center.Distance(p) < maxdist) && lrange[0] <= loop.length && loop.length <= lrange[1]) {
+            ++nloops[i];
+          }
         }
+        if (nloops[i] == 1) break;
       }
-      if (nloops[i] == 1) break;
+      d[i] = HausdorffDistance(cut[0], cut[1]);
+    } else {
+      nloops[i] = 0;
+      d[i] = 0.;
     }
-    d[i] = HausdorffDistance(cut[0], cut[1]);
   }
 
   double maxd = 0.;
