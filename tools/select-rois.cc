@@ -33,8 +33,20 @@
 #include <vtkPointData.h>
 #include <vtkCellData.h>
 #include <vtkCellArray.h>
+#include <vtkCutter.h>
+#include <vtkExtractCells.h>
+#include <vtkDataSetSurfaceFilter.h>
+#include <vtkPlane.h>
+#include <vtkPolygon.h>
+
+#include <mirtk/Common.h>
+#include <mirtk/Point.h>
+#include <mirtk/Vector3.h>
+#include <mirtk/Image.h>
+#include <mirtk/IOConfig.h>
 
 using namespace std;
+using namespace mirtk;
 
 
 // =============================================================================
@@ -59,16 +71,6 @@ int g_verbose = 0;
 // Auxiliaries
 // =============================================================================
 
-template <class T, class Alloc = std::allocator<T> >
-using Array = std::vector<T, Alloc>;
-
-template <class T>
-using Queue = std::queue<T>;
-
-template <class T>
-using UnorderedSet = std::unordered_set<T>;
-
-
 // -----------------------------------------------------------------------------
 struct Cluster
 {
@@ -77,8 +79,9 @@ struct Cluster
   vtkIdType size;
   float     center[3];
   float     total;
+  char      view; // 'A': axial, 'C': coronal, 'S': sagittal
 
-  Cluster() : label(-1), seed(-1), size(0), center{0.f, 0.f, 0.f}, total(0.f) {}
+  Cluster() : label(-1), seed(-1), size(0), center{0.f, 0.f, 0.f}, total(0.f), view(0) {}
 
   bool operator <(const Cluster &rhs) const
   {
@@ -108,39 +111,6 @@ bool Write(const char *name, vtkPolyData *mesh)
 
 
 // -----------------------------------------------------------------------------
-template <typename T>
-bool FromString(const char *str, T &value)
-{
-  if (str == nullptr || str[0] == '\0') return false;
-  istringstream is(str);
-  return !(is >> value).fail() && is.eof();
-}
-
-
-// -----------------------------------------------------------------------------
-template <>
-bool FromString(const char *str, bool &value)
-{
-  if (str == nullptr) return false;
-  if (strcmp(str, "0") == 0 ||
-      strcmp(str, "false") == 0 || strcmp(str, "False") == 0 || strcmp(str, "FALSE") == 0 ||
-      strcmp(str, "no")    == 0 || strcmp(str, "No")    == 0 || strcmp(str, "NO")    == 0 ||
-      strcmp(str, "off")   == 0 || strcmp(str, "Off")   == 0 || strcmp(str, "OFF")   == 0) {
-    value = false;
-    return true;
-  }
-  if (strcmp(str, "1") == 0 ||
-      strcmp(str, "true") == 0 || strcmp(str, "True") == 0 || strcmp(str, "TRUE") == 0 ||
-      strcmp(str, "yes")  == 0 || strcmp(str, "Yes")  == 0 || strcmp(str, "YES")  == 0 ||
-      strcmp(str, "on")   == 0 || strcmp(str, "On")   == 0 || strcmp(str, "ON")   == 0) {
-    value = true;
-    return true;
-  }
-  return false;
-}
-
-
-// -----------------------------------------------------------------------------
 void Print(vtkPolyData *surface, vtkPolyData *reference,
            const Array<Cluster> &clusters, const char *delim = ",")
 {
@@ -153,7 +123,7 @@ void Print(vtkPolyData *surface, vtkPolyData *reference,
   loc21->SetDataSet(surface);
   loc21->BuildLocator();
 
-  cout << "ClusterId,ClusterSize,AvgDistance,SeedId,SeedX,SeedY,SeedZ,CenterX,CenterY,CenterZ,MiddleX,MiddleY,MiddleZ\n";
+  cout << "ClusterId,ClusterSize,AvgDistance,SeedId,SeedX,SeedY,SeedZ,CenterX,CenterY,CenterZ,MiddleX,MiddleY,MiddleZ,View\n";
   for (const auto &cluster : clusters) {
     if (cluster.seed >= offset) {
       reference->GetPoint(cluster.seed - offset, p);
@@ -173,6 +143,7 @@ void Print(vtkPolyData *surface, vtkPolyData *reference,
          << delim << .5 * (p[0] + q[0])
          << delim << .5 * (p[1] + q[1])
          << delim << .5 * (p[2] + q[2])
+         << delim << cluster.view
          << "\n";
   }
   cout.flush();
@@ -884,6 +855,309 @@ void AppendRandomSamples(Array<Cluster> &clusters, vtkPolyData *mesh, int n,
 
 
 // =============================================================================
+// Cutting plane
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+void GetClusterCells(vtkIdList *cellIds, vtkPolyData *surface, vtkIdTypeArray *labels,
+                     vtkIdType label, vtkIdType offset = 0)
+{
+  vtkIdType npts, *pts;
+  cellIds->Reset();
+  if (offset < labels->GetNumberOfTuples()) {
+    for (vtkIdType cellId = 0; cellId < surface->GetNumberOfCells(); ++cellId) {
+      surface->GetCellPoints(cellId, npts, pts);
+      if (npts == 3) {
+        for (vtkIdType i = 0; i < npts; ++i) {
+          if (labels->GetValue(pts[i] + offset) == label) {
+            cellIds->InsertNextId(cellId);
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
+
+// -----------------------------------------------------------------------------
+void RemoveDistantPoints(vtkPolyData *cut, mirtk::Point p, double maxd)
+{
+  const double maxSqDist = maxd * maxd;
+  mirtk::Point q;
+  cut->BuildCells();
+  cut->BuildLinks();
+  unsigned short ncells;
+  vtkIdType *cells;
+  for (vtkIdType ptId = 0; ptId < cut->GetNumberOfPoints(); ++ptId) {
+    cut->GetPoint(ptId, q);
+    if (p.SquaredDistance(q) > maxSqDist) {
+      cut->GetPointCells(ptId, ncells, cells);
+      for (unsigned short i = 0; i < ncells; ++i) {
+        cut->DeleteCell(cells[i]);
+      }
+    }
+  }
+  cut->RemoveDeletedCells();
+}
+
+
+// -----------------------------------------------------------------------------
+vtkSmartPointer<vtkPolyData> Cut(vtkPolyData *surface, mirtk::Point p, mirtk::Vector3 n, double maxd = 0.)
+{
+  vtkSmartPointer<vtkPolyData> input;
+  if (maxd > 0.) {
+    input = vtkSmartPointer<vtkPolyData>::New();
+    input->ShallowCopy(surface);
+    RemoveDistantPoints(input, p, 2. * maxd);
+  } else {
+    input = surface;
+  }
+
+  vtkNew<vtkPlane> plane;
+  plane->SetOrigin(p);
+  plane->SetNormal(n);
+
+  vtkNew<vtkCutter> cutter;
+  cutter->SetCutFunction(plane.GetPointer());
+  cutter->SetInputData(input);
+  cutter->Update();
+
+  vtkSmartPointer<vtkPolyData> output = cutter->GetOutput();
+  if (maxd > .0) RemoveDistantPoints(output, p, maxd);
+  return output;
+}
+
+
+// -----------------------------------------------------------------------------
+vtkSmartPointer<vtkPolyData> Closed(vtkSmartPointer<vtkPolyData> cut)
+{
+  vtkSmartPointer<vtkPolyData> loops;
+  loops = vtkSmartPointer<vtkPolyData>::New();
+  loops->ShallowCopy(cut);
+
+  loops->BuildLinks();
+
+  unsigned short ncells;
+  vtkIdType ptId, nbrId, cellId, *cells;
+  vtkNew<vtkIdList> ptIds;
+  ptIds->Allocate(2);
+
+  Stack<vtkIdType> activePtIds;
+  for (ptId = 0; ptId < cut->GetNumberOfPoints(); ++ptId) {
+    loops->GetPointCells(ptId, ncells, cells);
+    if (ncells == 1) activePtIds.push(ptId);
+  }
+  while (!activePtIds.empty()) {
+    ptId = activePtIds.top(), activePtIds.pop();
+    loops->GetPointCells(ptId, ncells, cells);
+    if (ncells == 1) {
+      cellId = cells[0];
+      loops->GetCellPoints(cellId, ptIds.GetPointer());
+      loops->RemoveCellReference(cellId);
+      loops->DeleteCell(cellId);
+      for (vtkIdType i = 0; i < ptIds->GetNumberOfIds(); ++i) {
+        nbrId = ptIds->GetId(i);
+        if (nbrId != ptId) {
+          loops->GetPointCells(nbrId, ncells, cells);
+          if (ncells == 1) activePtIds.push(nbrId);
+        }
+      }
+    }
+  }
+  loops->RemoveDeletedCells();
+  return loops;
+}
+
+
+// -----------------------------------------------------------------------------
+double MaxClosestPointDistance(vtkPolyData *a, vtkPolyData *b)
+{
+  double d = 0.;
+  mirtk::Point p, q;
+  vtkNew<vtkPointLocator> loc;
+  loc->SetDataSet(b);
+  loc->BuildLocator();
+  for (vtkIdType ptId = 0, otherId; ptId < a->GetNumberOfPoints(); ++ptId) {
+    a->GetPoint(ptId, p);
+    otherId = loc->FindClosestPoint(p);
+    b->GetPoint(otherId, q);
+    d = max(d, p.Distance(q));
+  }
+  return d;
+}
+
+
+// -----------------------------------------------------------------------------
+double HausdorffDistance(vtkPolyData *a, vtkPolyData *b)
+{
+  return max(MaxClosestPointDistance(a, b), MaxClosestPointDistance(b, a));
+}
+
+
+// -----------------------------------------------------------------------------
+struct Loop
+{
+  vtkIdType start;
+  Point     center;
+  double    length;
+  int       size;
+  bool      inside;
+
+  Loop(vtkIdType start = -1) : start(start), length(NaN), size(0), inside(false) {}
+
+  operator bool() const
+  {
+    return start != -1 && size > 2;
+  }
+};
+
+
+// -----------------------------------------------------------------------------
+vtkIdType NextLinePoint(vtkPolyData *cut, const UnorderedSet<vtkIdType> &visited)
+{
+  vtkIdType npts, *pts;
+  for (vtkIdType line = 0; line < cut->GetNumberOfCells(); ++line) {
+    cut->GetCellPoints(line, npts, pts);
+    if (npts == 2 && visited.find(line) == visited.end()) return pts[0];
+  }
+  return -1;
+}
+
+
+// -----------------------------------------------------------------------------
+Loop ExtractLoop(vtkPolyData *cut, Point p, UnorderedSet<vtkIdType> &visited, vtkIdType start)
+{
+  unsigned short ncells, nlines;
+  vtkIdType npts, *pts, *cells, front = start, next = -1;
+  Point a, b;
+  Loop loop;
+
+  cut->GetPoint(start, a);
+  loop.start  = start;
+  loop.center = a;
+  loop.size   = 1;
+  loop.length = 0.;
+
+  vtkNew<vtkPoints> points;
+  points->SetDataTypeToDouble();
+  points->InsertNextPoint(a);
+
+  do {
+    next = -1;
+    nlines = 0;
+    cut->GetPointCells(front, ncells, cells);
+    for (unsigned short i = 0; i < ncells; ++i) {
+      cut->GetCellPoints(cells[i], npts, pts);
+      if (npts == 2) {
+        ++nlines;
+        if (next == -1 && visited.find(cells[i]) == visited.end()) {
+          visited.insert(cells[i]);
+          next = pts[(pts[1] == front ? 0 : 1)];
+        }
+      }
+    }
+    if (next == -1 || nlines != 2) {
+      return Loop();
+    }
+    cut->GetPoint(next, b);
+    loop.center += b;
+    loop.size   += 1;
+    loop.length += a.Distance(b);
+    points->InsertNextPoint(a);
+    front = next, a = b;
+  } while (next != loop.start);
+  if (loop.size > 0) {
+    loop.center /= loop.size;
+  }
+
+  double n[3], bounds[6];
+  double *coords = static_cast<double *>(points->GetData()->GetVoidPointer(0));
+  points->GetBounds(bounds);
+  vtkPolygon::ComputeNormal(points->GetNumberOfPoints(), coords, n);
+  loop.inside = (vtkPolygon::PointInPolygon(p, points->GetNumberOfPoints(), coords, bounds, n) == 1);
+
+  return loop;
+}
+
+
+// -----------------------------------------------------------------------------
+Array<Loop> Loops(vtkPolyData *cut, Point p)
+{
+  Array<Loop> loops;
+  UnorderedSet<vtkIdType> visited;
+  vtkIdType start;
+
+  cut->BuildLinks();
+  while ((start = NextLinePoint(cut, visited)) != -1) {
+    Loop loop = ExtractLoop(cut, p, visited, start);
+    if (loop) loops.push_back(move(loop));
+  }
+
+  return loops;
+}
+
+
+// -----------------------------------------------------------------------------
+int BestSliceView(mirtk::Image &image, vtkPolyData *surface, vtkPolyData *reference, const Cluster &cluster)
+{
+  vtkSmartPointer<vtkPolyData> cut[2];
+  Point p(cluster.center[0], cluster.center[1], cluster.center[2]);
+  Vector3 n;
+
+  image.WorldToImage(p);
+  p[0] = round(p[0]);
+  p[1] = round(p[1]);
+  p[2] = round(p[2]);
+  image.ImageToWorld(p);
+
+  const double maxdist = 1.;
+  const double radius = 5.;
+  const double lrange[2] = {1., 10.};
+
+  double d[3];
+  int nloops[3];
+  for (int i = 2; i >= 0; --i) {
+    n = 0., n[i] = 1;
+    image.ImageToWorld(n);
+    cut[0] = Cut(surface,   p, n, radius);
+    cut[1] = Cut(reference, p, n, radius);
+    for (int j = 0; j < 2; ++j) {
+      nloops[i] = 0;
+      for (auto loop : Loops(cut[j], p)) {
+        if ((loop.inside || loop.center.Distance(p) < maxdist) && lrange[0] <= loop.length && loop.length <= lrange[1]) {
+          ++nloops[i];
+        }
+      }
+      if (nloops[i] == 1) break;
+    }
+    d[i] = HausdorffDistance(cut[0], cut[1]);
+  }
+
+  double maxd = 0.;
+  int zdir = -1;
+  for (int i = 2; i >= 0; --i) {
+    if (nloops[i] != 1 && d[i] > maxd) {
+      maxd = d[i];
+      zdir = i;
+    }
+  }
+  if (zdir == -1) {
+    zdir = 2;
+    for (int i = 2; i >= 0; --i) {
+      if (d[i] > maxd) {
+        maxd = d[i];
+        zdir = i;
+      }
+    }
+  }
+
+  return zdir;
+}
+
+
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -906,6 +1180,7 @@ int main(int argc, char *argv[])
   const char *output_name      = nullptr;
   const char *pset_name        = nullptr;
   const char *mask_name        = nullptr;
+  const char *image_name       = nullptr;
   int         erode_mask       = 0;
   int         dist_percentile  = 0;
   float       min_seed_dist    = 2.f;
@@ -926,6 +1201,13 @@ int main(int argc, char *argv[])
     if (opt[0] != '-') {
       cerr << "Too many positional arguments given!" << endl;
       exit(1);
+    }
+    else if (opt == "-image") {
+      image_name = argv[++i];
+      if (!image_name) {
+        cerr << "Option " << opt << " requires an argument!" << endl;
+        exit(1);
+      }
     }
     else if (opt == "-mask-name" || opt == "-mask") {
       mask_name = argv[++i];
@@ -1151,6 +1433,16 @@ int main(int argc, char *argv[])
 
   // Relabel clusters such that label is increasing cluster ID
   Relabel(clusters, labels);
+
+  // Determine best orthogonal viewing direction
+  if (image_name) {
+    InitializeIOLibrary();
+    UniquePtr<BaseImage> image(BaseImage::New(image_name));
+    for (auto &cluster : clusters) {
+      int i = BestSliceView(*image, surface, reference, cluster);
+      cluster.view = (i == 2 ? 'A' : (i == 1 ? 'C' : 'S'));
+    }
+  }
 
   // Print selected clusters
   if (delim != nullptr) {
