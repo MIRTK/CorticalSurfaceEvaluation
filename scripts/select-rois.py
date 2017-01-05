@@ -177,8 +177,12 @@ if __name__ == '__main__':
                 sys.stdout.write(arg)
                 sys.stdout.write(' ')
             sys.stdout.write('\n\n')
-        lines = check_output(cmd).splitlines()
-        reader = csv.DictReader(lines)
+        table = check_output(cmd)
+        if args.verbose > 1:
+            sys.stdout.write('\n')
+            sys.stdout.write(table)
+            sys.stdout.write('\n')
+        reader = csv.DictReader(table.splitlines())
         points = []
         views = []
         nrandom = 0
