@@ -9,6 +9,14 @@ prefix_dir="$base_dir"
 mkdir -p "$build_dir" || exit 1
 cd "$build_dir" || exit 1
 
-cmake -DCMAKE_INSTALL_PREFIX="$prefix_dir" "$source_dir" || exit 1
+opts=()
+if [ $VTK_DIR ]; then
+  opts=("-DVTK_DIR=$VTK_DIR")
+fi
+if [ $MIRTK_DIR ]; then
+  opts=("-DMIRTK_DIR=$MIRTK_DIR")
+fi
+
+cmake "${opts[@]}" "$@" -DCMAKE_INSTALL_PREFIX="$prefix_dir" "$source_dir" || exit 1
 cmake --build "$build_dir" --config Release --target install || exit 1
 rm -rf "$build_dir" || exit 1
