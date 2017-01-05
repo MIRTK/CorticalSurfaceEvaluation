@@ -12,6 +12,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('database', help="SQLite database file")
 args = parser.parse_args()
 
+args.database = os.path.abspath(args.database)
 directory = os.path.dirname(args.database)
 if not os.path.isdir(directory):
     os.makedirs(directory)

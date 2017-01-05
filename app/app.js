@@ -14,10 +14,12 @@ global.evalScores = [];
 // Evaluation tasks and lists of corresponding overlay IDs
 global.evalTaskIds = [];
 global.evalOverlayIds = {};
+global.evalViewIds = {};
 
 // Comparison tasks with pairs of overlay IDs
 global.compTaskIds = [];
 global.compOverlayIds = {};
+global.compViewIds = {};
 
 // Current screenshot ID, used to restore page when temporarily switching
 // to other page such as Help or Open summary page
@@ -393,19 +395,31 @@ function loadEvaluationTasks(callback) {
       showErrorMessage(err);
     } else {
       global.evalTaskIds = [];
-      global.evalOverlayIds = {};
       for (var i = 0; i < rows.length; i++) {
         var taskId = rows[i]['EvaluationTaskId'];
-        if (!global.evalOverlayIds.hasOwnProperty(taskId)) {
-          global.evalTaskIds.push(taskId);
-        }
+        global.evalTaskIds.push(taskId);
         global.evalOverlayIds[taskId] = [];
+        global.evalViewIds[taskId] = [];
       }
-      for (var i = 0; i < rows.length; i++) {
-        var taskId = rows[i]['EvaluationTaskId'];
-        global.evalOverlayIds[taskId].push(rows[i]['OverlayId']);
-      }
-      callback();
+      global.db.each("SELECT * FROM EvaluationOverlays", function (err, row) {
+        if (err) {
+          showErrorMessage(err);
+        } else {
+          global.evalOverlayIds[row['EvaluationTaskId']].push(row['OverlayId']);
+        }
+      }, function (err, nrows) {
+        if (err) {
+          showErrorMessage(err);
+        } else {
+          global.db.each("SELECT * FROM EvaluationViews", function (err, row) {
+            if (err) {
+              showErrorMessage(err);
+            } else {
+              global.evalViewIds[row['EvaluationTaskId']].push(row['ViewId']);
+            }
+          }, callback);
+        }
+      });
     }
   });
 }
@@ -424,8 +438,15 @@ function loadComparisonTasks(callback) {
           rows[i]['OverlayId1'],
           rows[i]['OverlayId2']
         ];
+        global.compViewIds[taskId] = [];
       }
-      callback();
+      global.db.each("SELECT * FROM ComparisonViews", function (err, row) {
+        if (err) {
+          showErrorMessage(err);
+        } else {
+          global.compViewIds[row['ComparisonTaskId']].push(row['ViewId']);
+        }
+      }, callback);
     }
   });
 }
@@ -573,6 +594,22 @@ function showDoneMessage() {
   }
 }
 
+function viewIdConstraint(viewIds) {
+  var query = '';
+  if (viewIds.indexOf('D') != -1) {
+    if (viewIds.length > 1) {
+      query += "(" + sqlValueInSet('S.ViewId', 'IN', viewIds) + " OR ";
+    }
+    query += "S.ViewId = BestViewId";
+    if (viewIds.length > 1) {
+      query += ")";
+    }
+  } else {
+    query += sqlValueInSet('S.ViewId', 'IN', viewIds);
+  }
+  return query;
+}
+
 // ----------------------------------------------------------------------------
 // Progress for both summary and evaluation pages
 function queryTotalNumberOfEvaluationSets(task) {
@@ -580,8 +617,11 @@ function queryTotalNumberOfEvaluationSets(task) {
   if (!taskId) taskId = global.activeTask;
   var query = `
     SELECT COUNT(DISTINCT(ScreenshotId)) AS N
-    FROM EvaluationScreenshots
-    WHERE ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[taskId]);
+    FROM EvaluationScreenshots AS S
+    LEFT JOIN ROIs AS R
+      ON S.ROI_Id = R.ROI_Id
+    WHERE ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[taskId]) + `
+    AND ` + viewIdConstraint(global.evalViewIds[taskId]);
   global.db.get(
     query,
     function (err, row) {
@@ -600,9 +640,13 @@ function queryRemainingNumberOfEvaluationSets(task) {
   var query = `
     SELECT COUNT(DISTINCT(S.ScreenshotId)) AS N
     FROM EvaluationScreenshots AS S
+    LEFT JOIN ROIs AS R
+      ON S.ROI_Id = R.ROI_Id
     LEFT JOIN EvaluationScores AS E
       ON S.ScreenshotId = E.ScreenshotId AND RaterId = $raterId
-    WHERE Score IS NULL AND ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[taskId]);
+    WHERE Score IS NULL
+    AND ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[taskId]) + `
+    AND ` + viewIdConstraint(global.evalViewIds[taskId]);
   global.db.get(
     query,
     {
@@ -619,13 +663,18 @@ function queryRemainingNumberOfEvaluationSets(task) {
 }
 
 function queryTotalNumberOfComparisonSets(task) {
-  var overlayIds = global.compOverlayIds[task];
+  var taskId = task;
+  if (!taskId) taskId = global.activeTask;
+  var overlayIds = global.compOverlayIds[taskId];
   var id1 = Math.min(overlayIds[0], overlayIds[1]);
   var id2 = Math.max(overlayIds[0], overlayIds[1]);
   var query = `
-    SELECT COUNT(DISTINCT(ScreenshotId)) AS N FROM ComparisonScreenshots
+    SELECT COUNT(DISTINCT(ScreenshotId)) AS N
+    FROM ComparisonScreenshots AS S
+    LEFT JOIN ROIs AS R
+      ON S.ROI_Id = R.ROI_Id
     WHERE OverlayId1 = $id1 AND OverlayId2 = $id2
-  `;
+    AND ` + viewIdConstraint(global.compViewIds[taskId]);
   global.db.get(
     query,
     {
@@ -636,8 +685,6 @@ function queryTotalNumberOfComparisonSets(task) {
       if (err) {
         showErrorMessage(err);
       } else {
-        var taskId = task;
-        if (!taskId) taskId = global.activeTask;
         setTotalNumberOfScreenshots("comp-" + taskId, row['N']);
       }
     }
@@ -645,16 +692,20 @@ function queryTotalNumberOfComparisonSets(task) {
 }
 
 function queryRemainingNumberOfComparisonSets(task) {
-  var overlayIds = global.compOverlayIds[task];
+  var taskId = task;
+  if (!taskId) taskId = global.activeTask;
+  var overlayIds = global.compOverlayIds[taskId];
   var id1 = Math.min(overlayIds[0], overlayIds[1]);
   var id2 = Math.max(overlayIds[0], overlayIds[1]);
   var query = `
     SELECT COUNT(DISTINCT(S.ScreenshotId)) AS N
     FROM ComparisonScreenshots AS S
+    LEFT JOIN ROIs AS R
+      ON S.ROI_Id = R.ROI_Id
     LEFT JOIN ComparisonChoices AS C
       ON S.ScreenshotId = C.ScreenshotId AND RaterId = $raterId
     WHERE OverlayId1 = $id1 AND OverlayId2 = $id2 AND BestOverlayId IS NULL
-  `;
+    AND ` + viewIdConstraint(global.compViewIds[taskId]);
   global.db.get(
     query,
     {
@@ -666,8 +717,6 @@ function queryRemainingNumberOfComparisonSets(task) {
       if (err) {
         showErrorMessage(err);
       } else {
-        var taskId = task;
-        if (!taskId) taskId = global.activeTask;
         setRemainingNumberOfScreenshots("comp-" + taskId, row['N']);
       }
     }
@@ -706,10 +755,13 @@ function queryNextEvalScreenshot() {
   var query = `
     SELECT S.ScreenshotId AS ScreenshotId, FileName, ROIScreenshotId, ROIScreenshotName
     FROM EvaluationScreenshots AS S
+    LEFT JOIN ROIs AS R
+      ON S.ROI_Id = R.ROI_Id
     LEFT JOIN EvaluationScores AS E
       ON E.ScreenshotId = S.ScreenshotId AND RaterId = $raterId
-    WHERE Score IS NULL AND ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[global.activeTask]) + `
-  `;
+    WHERE Score IS NULL
+    AND ` + sqlValueInSet('OverlayId', 'IN', global.evalOverlayIds[global.activeTask]) + `
+    AND ` + viewIdConstraint(global.evalViewIds[global.activeTask]);
   var screenshotId = global.evalScreenshotId[global.activeTask];
   if (screenshotId) {
     query += " AND S.ScreenshotId = " + screenshotId;
@@ -967,27 +1019,29 @@ function queryNextCompScreenshot() {
         B.FileName AS FileName2,
         B.OverlayId AS OverlayId2,
         B.Color AS Color2,
-        R.ScreenshotId AS ROIScreenshotId,
-        R.FileName AS ROIScreenshotName
+        RS.ScreenshotId AS ROIScreenshotId,
+        RS.FileName AS ROIScreenshotName
       FROM ComparisonScreenshots AS S
-      LEFT JOIN ROIScreenshots AS R
-        ON  R.ROI_Id  = S.ROI_Id
-        AND R.CenterI = S.CenterI
-        AND R.CenterJ = S.CenterJ
-        AND R.CenterK = S.CenterK
-        AND R.ViewId  = S.ViewId
+      LEFT JOIN ROIs AS R
+        ON S.ROI_Id = R.ROI_Id
+      LEFT JOIN ROIScreenshots AS RS
+        ON  RS.ROI_Id  = S.ROI_Id
+        AND RS.CenterI = S.CenterI
+        AND RS.CenterJ = S.CenterJ
+        AND RS.CenterK = S.CenterK
+        AND RS.ViewId  = S.ViewId
       LEFT JOIN IndividualComparisonScreenshots AS A
-        ON  A.ROIScreenshotId = R.ScreenshotId
+        ON  A.ROIScreenshotId = RS.ScreenshotId
         AND A.OverlayId       = S.OverlayId1
         AND A.Color           = S.Color1
       LEFT JOIN IndividualComparisonScreenshots AS B
-        ON  B.ROIScreenshotId = R.ScreenshotId
+        ON  B.ROIScreenshotId = RS.ScreenshotId
         AND B.OverlayId       = S.OverlayId2
         AND B.Color           = S.Color2
       LEFT JOIN ComparisonChoices AS C
         ON C.ScreenshotId = S.ScreenshotId AND C.RaterId = $raterId
       WHERE A.OverlayId = $id1 AND B.OverlayId = $id2 AND C.BestOverlayId IS NULL
-    `;
+      AND ` + viewIdConstraint(global.compViewIds[global.activeTask]);
   if (screenshotId) {
     query += " AND S.ScreenshotId = " + screenshotId + " GROUP BY S.ScreenshotId";
   } else {

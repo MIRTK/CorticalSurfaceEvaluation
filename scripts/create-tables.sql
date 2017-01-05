@@ -39,6 +39,9 @@ CREATE TABLE Views
 );
 
 INSERT INTO Views (ViewId, Name, Description)
+VALUES ('D', 'Default', 'Default view, e.g., optimal orthogonal view');
+
+INSERT INTO Views (ViewId, Name, Description)
 VALUES ('A', 'Axial', 'Axial image slice');
 
 INSERT INTO Views (ViewId, Name, Description)
@@ -166,6 +169,12 @@ CREATE TABLE Commands
 --
 -- The center and span of the region in each dimension are given in
 -- world coordinates and mm units, respectively.
+--
+-- The BestViewId is an automatically determined optimal orthogonal
+-- viewing direction for comparison of two surfaces as determined
+-- by the select-roi command-line tool when the -image option is given.
+-- It may be used to only show a single view per ROI in order to
+-- reduce the number of screenshots that need to be evaluated manually.
 CREATE TABLE ROIs
 (
     ROI_Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,9 +183,11 @@ CREATE TABLE ROIs
     CenterY REAL NOT NULL,
     CenterZ REAL NOT NULL,
     Span REAL,
+    BestViewId CHARACTER(1),
     CommandId INTEGER,
     FOREIGN KEY (ScanId) REFERENCES Scans(ScanId)
     FOREIGN KEY (CommandId) REFERENCES Commands(CommandId)
+    FOREIGN KEY (BestViewId) REFERENCES Views(ViewId)
 );
 
 -- Table of screenshots that have been pre-rendered to file
@@ -286,16 +297,38 @@ WHERE O1.OverlayId NOT IN (0, 1) AND O1.OverlayId < O2.OverlayId AND O3.OverlayI
 --                         Evaluation tables                                --
 ------------------------------------------------------------------------------
 
--- Table with IDs of overlays to be evaluated individually
+-- Table with evaluation tasks
 CREATE TABLE EvaluationTasks
+(
+    EvaluationTaskId INTEGER PRIMARY KEY
+);
+
+INSERT INTO EvaluationTasks (EvaluationTaskId) VALUES (1);
+
+-- Table with IDs of overlays to be evaluated as part of the specified task
+CREATE TABLE EvaluationOverlays
 (
     EvaluationTaskId INTEGER NOT NULL,
     OverlayId INTEGER NOT NULL,
+    PRIMARY KEY (EvaluationTaskId, OverlayId),
+    FOREIGN KEY (EvaluationTaskId) REFERENCES EvaluationTasks(EvaluationTaskId)
     FOREIGN KEY (OverlayId) REFERENCES ScreenshotOverlays(OverlayId)
 );
 
-INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 3);
-INSERT INTO EvaluationTasks (EvaluationTaskId, OverlayId) VALUES (1, 4);
+INSERT INTO EvaluationOverlays (EvaluationTaskId, OverlayId) VALUES (1, 3);
+INSERT INTO EvaluationOverlays (EvaluationTaskId, OverlayId) VALUES (1, 4);
+
+-- Table of ROI views shown as part of a specific evaluation task
+CREATE TABLE EvaluationViews
+(
+    EvaluationTaskId INTEGER NOT NULL,
+    ViewId CHARACTER(1) NOT NULL,
+    PRIMARY KEY (EvaluationTaskId, ViewId),
+    FOREIGN KEY (EvaluationTaskId) REFERENCES EvaluationTasks(EvaluationTaskId)
+    FOREIGN KEY (ViewId) REFERENCES Views(ViewId)
+);
+
+INSERT INTO EvaluationViews (EvaluationTaskId, ViewId) VALUES (1, 'D');
 
 -- Table of single overlay evaluation scores
 CREATE TABLE EvaluationScores
@@ -321,6 +354,19 @@ CREATE TABLE ComparisonTasks
 
 INSERT INTO ComparisonTasks (ComparisonTaskId, OverlayId1, OverlayId2) VALUES (1, 3, 4);
 INSERT INTO ComparisonTasks (ComparisonTaskId, OverlayId1, OverlayId2) VALUES (2, 3, 2);
+
+-- Table of ROI views shown as part of a specific comparison task
+CREATE TABLE ComparisonViews
+(
+    ComparisonTaskId INTEGER NOT NULL,
+    ViewId CHARACTER(1) NOT NULL,
+    PRIMARY KEY (ComparisonTaskId, ViewId),
+    FOREIGN KEY (ComparisonTaskId) REFERENCES ComparisonTasks(ComparisonTaskId)
+    FOREIGN KEY (ViewId) REFERENCES Views(ViewId)
+);
+
+INSERT INTO ComparisonViews (ComparisonTaskId, ViewId) VALUES (1, 'D');
+INSERT INTO ComparisonViews (ComparisonTaskId, ViewId) VALUES (2, 'D');
 
 -- Table of overlay comparison choices
 CREATE TABLE ComparisonChoices

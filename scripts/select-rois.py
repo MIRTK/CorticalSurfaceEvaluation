@@ -64,10 +64,15 @@ def get_or_insert_command_id(db, name, params, print_sql=False):
     return cmd_id
 
 
-def insert_roi(db, scan_id, center, span, cmd_id=0, print_sql=False):
+def insert_roi(db, scan_id, center, span, view=None, cmd_id=0, print_sql=False):
     """Insert new ROI into database."""
-    sql = "INSERT INTO ROIs (ScanId, CommandId, CenterX, CenterY, CenterZ, Span) VALUES (:scan_id, :cmd_id, :x, :y, :z, :span)"
-    par = dict(scan_id=scan_id, cmd_id=cmd_id, x=center[0], y=center[1], z=center[2], span=span)
+    cols = "ScanId, CommandId, CenterX, CenterY, CenterZ, Span"
+    vals = ":scan_id, :cmd_id, :x, :y, :z, :span"
+    if view:
+        cols += ", BestViewId"
+        vals += ", :view"
+    sql = "INSERT INTO ROIs ({}) VALUES ({})".format(cols, vals)
+    par = dict(scan_id=scan_id, cmd_id=cmd_id, x=center[0], y=center[1], z=center[2], span=span, view=view)
     if print_sql:
         for key, value in par.items():
             sql = sql.replace(':' + key, str(value))
@@ -90,6 +95,8 @@ if __name__ == '__main__':
                         help="Surface mesh file", required=True)
     parser.add_argument('--reference',
                         help="Reference surface mesh file")
+    parser.add_argument('--image',
+                        help="Image used to determine best orthogonal viewing direction")
     parser.add_argument('--mask-name', default='',
                         help="Name of point/cell data mask array")
     parser.add_argument('--mask-erosion', default=0,
@@ -154,6 +161,8 @@ if __name__ == '__main__':
             '-stratified', True,
             '-delim', ','
         ]
+        if args.image:
+            cmd.extend(['-image', os.path.abspath(args.image)])
         if args.mask_name:
             cmd.extend(['-mask-name', args.mask_name, '-mask-erosion', args.mask_erosion])
         if args.verbose > 1:
@@ -171,6 +180,7 @@ if __name__ == '__main__':
         lines = check_output(cmd).splitlines()
         reader = csv.DictReader(lines)
         points = []
+        views = []
         nrandom = 0
         for row in reader:
             if args.cluster_centers:
@@ -182,6 +192,10 @@ if __name__ == '__main__':
                 y = float(row['SeedY'])
                 z = float(row['SeedZ'])
             points.append((x, y, z))
+            try:
+                views.append(row['View'])
+            except KeyError:
+                views.append(None)
             if int(row['ClusterSize']) <= 1:
                 nrandom += 1
         if args.verbose > 0:
@@ -189,9 +203,9 @@ if __name__ == '__main__':
         # write selected regions of interest to database
         cur = db.cursor()
         try:
-            for point in points:
+            for point, view in zip(points, views):
                 insert_roi(cur, scan_id=scan_id,
-                           center=point, span=args.span,
+                           center=point, span=args.span, view=view,
                            cmd_id=cmd_id, print_sql=args.print_sql)
             db.commit()
         finally:
