@@ -6,16 +6,17 @@ if [ $# -eq 0 ]; then
 fi
 
 rev="$(mirtk info -revision)"
-top="$(cd $(dirname "$BASH_SOURCE") && pwd)"
+top="$(cd "$(dirname "$BASH_SOURCE")/.." && pwd)"
 cfg="$top/config/recon-neonatal-cortex.cfg"
 tmp="$top/temp/rev-$rev"
 out="$top/meshes/rev-$rev"
 img="$top/images"
+lbl="$top/labels"
 
 mirtk recon-neonatal-cortex -v -v -d \
     --config "$cfg" --sessions "$@" \
     --ensure-pial-is-outside-white-surface \
-    --temp "$tmp" --meshes "$out" --images "$img" \
+    --temp "$tmp" --meshes "$out" --images "$img" --labels "$lbl" \
     --cerebrum --white --pial \
     --keep-t1w-image --keep-t2w-image -keep-regions-mask \
     --threads 8 --queue long
