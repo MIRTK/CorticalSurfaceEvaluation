@@ -1,6 +1,6 @@
 #!/bin/bash
 
-base_dir="$(cd "$(dirname "$BASH_SOURCE")" && pwd)"
+base_dir="$(cd "$(dirname "$BASH_SOURCE")/.." && pwd)"
 source_dir="$base_dir/tools"
 build_dir="$base_dir/tools/build"
 prefix_dir="$base_dir"
