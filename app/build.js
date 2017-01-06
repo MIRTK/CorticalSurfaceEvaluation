@@ -15,11 +15,12 @@ if (args.length === 0) {
 var nw = new NwBuilder({
   files: path.join(__dirname, '**'),
   platforms: args,
-  version: 'latest',
+  version: '0.19.1',
   flavor: 'normal',
   buildType: function () { return 'release'; },
   macIcns: path.join(__dirname, 'app.icns'),
-  winIco: path.join(__dirname, 'app.ico')
+  winIco: path.join(__dirname, 'app.ico'),
+  downloadUrl: 'https://dl.nwjs.io/'
 });
 
 // .build() returns a promise but also supports a plain callback approach as well
