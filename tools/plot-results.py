@@ -63,10 +63,11 @@ def comparison_choices(db, overlay1, overlay2, rater=None):
         c.close()
     ids, counts = np.unique(arr, return_counts=True)
     if len(ids) == 0:
-        return [0]
+        return np.zeros(1)
     elif len(ids) == 2:
         ids = [0] + ids
-        counts = [0] + counts
+        np.insert(ids, obj=0, values=0)
+        np.insert(counts, obj=0, values=0)
     elif ids[0] != 0:
         raise Exception("Expected first overlay ID to be 0, i.e., choice 'Neither'")
     if ids[1] == overlay2:
