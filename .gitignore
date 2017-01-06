@@ -1,7 +1,7 @@
-/bin/
+/app/build/
+/app/cache/
+/bin/select-rois
 /data/
-/cache/
-/build/
 /temp/
 /images/
 /labels/

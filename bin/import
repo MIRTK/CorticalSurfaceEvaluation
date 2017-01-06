@@ -47,8 +47,8 @@ import()
 # -----------------------------------------------------------------------------
 # MAIN
 
-BASE_DIR="$(dirname "$BASH_SOURCE")"
-BASE_DIR="$(cd "$SCRIPT_DIR" && pwd)"
+BASE_DIR="$(dirname "$BASH_SOURCE")/.."
+BASE_DIR="$(cd "$BASE_DIR" && pwd)"
 SCRIPT_DIR="$BASE_DIR/tools"
 TEMP_DIR="$BASE_DIR/temp"
 

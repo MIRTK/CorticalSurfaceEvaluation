@@ -1,0 +1,35 @@
+#!/bin/bash
+
+base_dir="$(cd "$(dirname "$BASH_SOURCE")/.." && pwd)"
+source_dir="$base_dir/app"
+build_dir="$base_dir/app/build"
+
+node "$source_dir/build.js" "$@"
+[ $? -eq 0 ] || exit 1
+
+for platform in 'linux32' 'linux64'; do
+  if [ -d "$build_dir/$platform" ]; then
+    echo "Creating archive for ${platform}..."
+    desktop_file="$build_dir/$platform/CorticalSurfaceEvaluation.desktop"
+    cp "$source_dir/app.desktop" "$desktop_file" && chmod a+x "$desktop_file" || exit 1
+    cp -r "$build_dir/$platform" /tmp/CorticalSurfaceEvaluation
+    tar -C /tmp -cjf build/release/CorticalSurfaceEvaluation-${platform}.tar.bz2 CorticalSurfaceEvaluation
+    rm -rf /tmp/CorticalSurfaceEvaluation
+    echo "Creating archive for ${platform}... done:"
+    echo "  $build_dir/CorticalSurfaceEvaluation-${platform}.tar.bz2"
+  fi
+done
+
+for platform in 'osx32' 'osx64'; do
+  if [ -d "$build_dir/$platform" ]; then
+    echo "Creating archive for ${platform}..."
+    cp "$source_dir/dmg.json" "$build_dir/$platform/dmg.json" || exit 1
+    cd "$build_dir/$platform" || exit 1
+    appdmg dmg.json CorticalSurfaceEvaluation-${platform}.dmg || exit 1
+    rm -f dmg.json
+    mv CorticalSurfaceEvaluation-${platform}.dmg ..
+    cd ../../.. || exit 1
+    echo "Creating archive for ${platform}... done:"
+    echo "  $build_dir/CorticalSurfaceEvaluation-${platform}.dmg"
+  fi
+done
