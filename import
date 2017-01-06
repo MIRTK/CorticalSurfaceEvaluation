@@ -49,7 +49,7 @@ import()
 
 BASE_DIR="$(dirname "$BASH_SOURCE")"
 BASE_DIR="$(cd "$SCRIPT_DIR" && pwd)"
-SCRIPT_DIR="$BASE_DIR/scripts"
+SCRIPT_DIR="$BASE_DIR/tools"
 TEMP_DIR="$BASE_DIR/temp"
 
 SESSIONS=("$@")
