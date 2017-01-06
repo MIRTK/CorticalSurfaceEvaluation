@@ -83,7 +83,14 @@ def render(fname=None, dpi=1200):
         plt.show()
 
 
-def plot_evaluation_scores(db, rater=0, fname=None, dpi=1200):
+def topct(counts, i=-1):
+    if i >= 0:
+        return 100. * float(counts[i]) / counts.sum()
+    else:
+        return 100. * counts.astype(np.float) / counts.sum()
+
+
+def plot_evaluation_scores_grouped_hbars(db, rater=0, fname=None, dpi=1200):
     fontname = 'Arial'
 
     fig, ax = plt.subplots(figsize=(10, 4), facecolor='white')
@@ -96,7 +103,7 @@ def plot_evaluation_scores(db, rater=0, fname=None, dpi=1200):
     max_width = width.max()
     rects1 = ax.barh(bottom + height, width=width, height=height, facecolor='#e85f5f', edgecolor='white')
 
-    count = evaluation_scores(db, overlay=3)
+    count = evaluation_scores(db, overlay=3, rater=rater)
     width = 100 * (count.astype(np.float) / float(count.sum()))
     max_width = max(max_width, width.max())
     rects2 = ax.barh(bottom, width=width, height=height, facecolor='#4682b4', edgecolor='white')
@@ -115,10 +122,70 @@ def plot_evaluation_scores(db, rater=0, fname=None, dpi=1200):
     render(fname=fname, dpi=dpi)
 
 
-def plot_comparison_choices(db, overlays,
-                            labels=('reference', 'proposed'),
-                            colors=('#e85f5f', '#4682b4'),
-                            rater=0, fname=None, dpi=1200):
+def plot_evaluation_scores_stacked_hbars(db, rater=0, fname=None, dpi=1200):
+    counts_proposed = evaluation_scores(db, overlay=3, rater=rater)
+    counts_vol2mesh = evaluation_scores(db, overlay=4, rater=rater)
+
+    fontname = 'Arial'
+    height = .6
+    space = .1
+    bottom = np.arange(2) * (height + space) + space
+    colors = ('#e85f5f', '#f0ad4e', '#0275d8', '#5cb85c')
+    labels = ('Poor', 'Fair', 'Good', 'Excellent')
+
+    fig = plt.figure(figsize=(10, 2), facecolor='white')
+    axes = fig.gca()
+
+    left = np.zeros(2)
+    rects = [None] * max_score
+    for score in range(max_score):
+        width = (topct(counts_proposed, score), topct(counts_vol2mesh, score))
+        rects[score] = axes.barh(bottom, left=left, width=width, height=height, facecolor=colors[score], edgecolor='white')
+        for i in range(2):
+            rect = rects[score][i]
+            axes.text(max(.1, rect.get_x() + rect.get_width() / 2. - .5),
+                      rect.get_y() + rect.get_height() / 2.,
+                      "{:0.0f}%".format(width[i]),
+                      ha='left', va='center', fontname=fontname, fontweight='medium')
+        left += width
+    axes.set_xticks(np.arange(0., 101., 100.), minor=False)
+    axes.xaxis.grid(False, which='major')
+    axes.xaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0f%%'))
+    axes.set_ylim(0., bottom[1] + height + space)
+    axes.set_yticks(bottom + height / 2.)
+    axes.set_yticklabels(('proposed', 'vol2mesh'), fontname=fontname, size=14)
+    axes.tick_params(axis='y', which='both', left='off', right='off')
+    axes.legend([r[0] for r in rects], labels,
+                bbox_to_anchor=(0., -.7, 1., -.2), loc=3,
+                ncol=max_score, mode="expand", borderaxespad=0.)
+    fig.subplots_adjust(bottom=.4)
+    render(fname=fname, dpi=dpi)
+
+
+def plot_evaluation_scores_pie(db, overlay, rater=0, fname=None, dpi=1200):
+    fig = plt.figure(figsize=(6.5, 5), facecolor='white')
+    axes = fig.gca()
+    wedges, labels, texts = axes.pie(evaluation_scores(db, overlay=overlay, rater=rater),
+                                     labels=('Poor', 'Fair', 'Good', 'Excellent'),
+                                     colors=('#e85f5f', '#f0ad4e', '#0275d8', '#5cb85c'),
+                                     autopct='%1.0f%%', startangle=90, counterclock=False)
+    for wedge in wedges:
+        wedge.set_edgecolor('white')
+    for label in labels:
+        label.set_fontname('Arial')
+        label.set_fontsize(16)
+    for text in texts:
+        text.set_fontsize(14)
+        text.set_fontname('Arial')
+        text.set_fontweight('medium')
+    axes.axis('equal')
+    render(fname=fname, dpi=dpi)
+
+
+def plot_comparison_choices_pie(db, overlays,
+                                labels=('reference', 'proposed'),
+                                colors=('#e85f5f', '#4682b4'),
+                                rater=0, fname=None, dpi=1200):
     fig = plt.figure(figsize=(6.5, 5), facecolor='white')
     axes = fig.gca()
     wedges, labels, texts = axes.pie(comparison_choices(db, overlay1=overlays[0], overlay2=overlays[1], rater=rater),
@@ -144,8 +211,14 @@ if __name__ == '__main__':
                         help="SQLite database with evaluation results")
     parser.add_argument('--dpi', default=1200, type=int,
                         help="Dots per inch for output figures")
-    parser.add_argument('--scores', nargs='?', const='show',
-                        help="Plot evaluation scores of white matter surfaces")
+    parser.add_argument('--scores-grouped-bars', nargs='?', const='show',
+                        help="Plot evaluation scores of white matter surfaces as grouped bar chart")
+    parser.add_argument('--scores-stacked-bars', nargs='?', const='show',
+                        help="Plot evaluation scores of white matter surfaces as stacked bar chart")
+    parser.add_argument('--scores-pie-vol2mesh', nargs='?', const='show',
+                        help="Plot evaluation scores of vol2mesh surfaces as pie chart")
+    parser.add_argument('--scores-pie-proposed', nargs='?', const='show',
+                        help="Plot evaluation scores of white matter surfaces as pie chart")
     parser.add_argument('--compare-initial', nargs='?', const='show',
                         help="Plot comparison choices between initial and final white matter surface")
     parser.add_argument('--compare-vol2mesh', nargs='?', const='show',
@@ -157,23 +230,34 @@ if __name__ == '__main__':
 
     db = sqlite3.connect(args.database)
     try:
-        if (not args.scores and
-                not args.compare_initial and
-                not args.compare_vol2mesh):
-            if (evaluation_scores(db, overlay=3, rater=args.rater).sum() > 0 and
-                    evaluation_scores(db, overlay=4, rater=args.rater).sum() > 0):
-                args.scores = 'show'
+        if (not args.scores_grouped_bars and not args.scores_stacked_bars and
+                not args.scores_pie_vol2mesh and not args.scores_pie_proposed and
+                not args.compare_initial and not args.compare_vol2mesh):
+            nscores_proposed = evaluation_scores(db, overlay=3, rater=args.rater).sum()
+            nscores_vol2mesh = evaluation_scores(db, overlay=4, rater=args.rater).sum()
+            if nscores_vol2mesh > 0:
+                args.scores_pie_vol2mesh = 'show'
+            if nscores_proposed > 0:
+                args.scores_pie_proposed = 'show'
+            if nscores_vol2mesh > 0 and nscores_proposed > 0:
+                args.scores_stacked_bars = 'show'
             if comparison_choices(db, overlay1=2, overlay2=3, rater=args.rater).sum() > 0:
                 args.compare_initial = 'show'
             if comparison_choices(db, overlay1=3, overlay2=4, rater=args.rater).sum() > 0:
                 args.plot_comparison_with_vol2mesh = 'show'
-        if args.scores:
-            plot_evaluation_scores(db, fname=args.scores, rater=args.rater, dpi=args.dpi)
+        if args.scores_grouped_bars:
+            plot_evaluation_scores_grouped_hbars(db, fname=args.scores_grouped_bars, rater=args.rater, dpi=args.dpi)
+        if args.scores_stacked_bars:
+            plot_evaluation_scores_stacked_hbars(db, fname=args.scores_stacked_bars, rater=args.rater, dpi=args.dpi)
+        if args.scores_pie_vol2mesh:
+            plot_evaluation_scores_pie(db, fname=args.scores_pie_vol2mesh, overlay=3, rater=args.rater, dpi=args.dpi)
+        if args.scores_pie_proposed:
+            plot_evaluation_scores_pie(db, fname=args.scores_pie_proposed, overlay=4, rater=args.rater, dpi=args.dpi)
         if args.compare_initial:
-            plot_comparison_choices(db, fname=args.compare_initial, rater=args.rater,
-                                    overlays=(2, 3), labels=('initial', 'proposed'), dpi=args.dpi)
+            plot_comparison_choices_pie(db, fname=args.compare_initial, rater=args.rater,
+                                        overlays=(2, 3), labels=('initial', 'proposed'), dpi=args.dpi)
         if args.compare_vol2mesh:
-            plot_comparison_choices(db, fname=args.compare_vol2mesh, rater=args.rater,
-                                    overlays=(4, 3), labels=('vol2mesh', 'proposed'), dpi=args.dpi)
+            plot_comparison_choices_pie(db, fname=args.compare_vol2mesh, rater=args.rater,
+                                        overlays=(4, 3), labels=('vol2mesh', 'proposed'), dpi=args.dpi)
     finally:
         db.close()
