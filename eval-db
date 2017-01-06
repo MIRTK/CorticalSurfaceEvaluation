@@ -24,7 +24,7 @@ DATABASE_DIR="$(cd "$DATABASE_DIR" && pwd)"
 BASE_DIR="$(dirname "$BASH_SOURCE")"
 BASE_DIR="$(cd "$BASE_DIR" && pwd)"
 
-SCRIPT_DIR="$BASE_DIR/scripts"
+SCRIPT_DIR="$BASE_DIR/tools"
 LOGS_DIR="$BASE_DIR/logs/eval-db"
 IMAGES_DIR="$BASE_DIR/images/t2w"
 LABELS_DIR="$BASE_DIR/labels/tissues"
