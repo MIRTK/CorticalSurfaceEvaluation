@@ -4,8 +4,9 @@ base_dir="$(cd "$(dirname "$BASH_SOURCE")/.." && pwd)"
 source_dir="$base_dir/app"
 build_dir="$base_dir/app/build"
 
-node "$source_dir/build.js" "$@"
-[ $? -eq 0 ] || exit 1
+cd "$source_dir" || exit 1
+node build.js "$@" || exit 1
+cd "$base_dir" || exit 1
 
 for platform in 'linux32' 'linux64'; do
   if [ -d "$build_dir/$platform" ]; then

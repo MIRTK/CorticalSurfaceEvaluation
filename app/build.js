@@ -18,7 +18,6 @@ var nw = new NwBuilder({
   version: '0.19.1',
   flavor: 'normal',
   buildDir: __dirname,
-  cacheDir: path.join(__dirname, 'cache'),
   buildType: function () { return 'build'; },
   macIcns: path.join(__dirname, 'app.icns'),
   winIco: path.join(__dirname, 'app.ico'),
