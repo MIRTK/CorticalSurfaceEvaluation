@@ -1,11 +1,52 @@
 #!/bin/bash
 
 if [ $# -eq 0 ]; then
-  echo "usage: $(basename "$BASH_SOURCE") <csv>|<session>..."
+  echo "usage: $(basename "$BASH_SOURCE") [--revision COMMIT] [--queue QUEUE] [--] <csv>|<session>..."
   exit 1
 fi
 
-rev="$(mirtk info -revision)"
+rev=
+sessions=()
+queue_opt=
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -rev|-revision|--rev|--revision)
+      shift
+      if [ $# -eq 0 ]; then
+        echo "Option 'revision' requires an argument!" 1>&2
+        exit 1
+      fi
+      rev="$1"
+      ;;
+    -q|-queue|--queue)
+      shift
+      if [ $# -eq 0 ]; then
+        echo "Option 'queue' requires an argument!" 1>&2
+        exit 1
+      fi
+      queue_opt=('--queue' "$1")
+      ;;
+    --)
+      shift
+      sessions=("${args[@]}" "$@")
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1" 1>&2
+      exit 1
+      ;;
+    *)
+      sessions=("${args[@]}" "$1")
+      ;;
+  esac
+  shift
+done
+
+if [ -z "$rev" ]; then
+  rev="$(mirtk info -revision)"
+fi
+
 top="$(cd "$(dirname "$BASH_SOURCE")/.." && pwd)"
 cfg="$top/config/recon-neonatal-cortex.cfg"
 tmp="$top/temp/rev-$rev"
@@ -14,9 +55,9 @@ img="$top/images"
 lbl="$top/labels"
 
 mirtk recon-neonatal-cortex -v -v -d \
-    --config "$cfg" --sessions "$@" \
+    --config "$cfg" --sessions "${sessions[@]}" \
     --ensure-pial-is-outside-white-surface \
     --temp "$tmp" --meshes "$out" --images "$img" --labels "$lbl" \
-    --cerebrum --white --pial \
-    --keep-t1w-image --keep-t2w-image -keep-regions-mask \
-    --threads 8 --queue long
+    --cerebrum --white --pial --join-with-internal-mesh \
+    --keep-t1w-image --keep-t2w-image --keep-regions-mask \
+    --threads 8 ${queue_opt[@]}
