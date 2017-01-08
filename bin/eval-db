@@ -143,6 +143,18 @@ get_number_of_screenshots_with_vol2mesh_and_white_matter_surface()
     AND OverlayId2 = $VOL2MESH_SURFACE_ID"
 }
 
+get_number_of_screenshot_files()
+{
+  local prefix="$1"
+  prefix="${prefix/\{subject\}/$SUBJECT}"
+  prefix="${prefix/\{session\}/$SESSION}"
+  if [ -d "$prefix" ]; then
+    find "$prefix" -name '*.png' -type f | wc -l
+  else
+    echo 0
+  fi
+}
+
 
 # -----------------------------------------------------------------------------
 # select ROIs from given scan
@@ -197,11 +209,17 @@ take_screenshots()
   [ -z "$MAX_INTENSITY" ] || range[1]=$MAX_INTENSITY
 
   # save screenshots of whole slices with bounding boxes overlaid
+  prefix="$SCREENSHOTS_DIR/roi-bounds"
   n=$(get_number_of_screenshots_with_bounding_boxes)
-  if [ $n -eq 0 ]; then
+  if [ $n -gt 0 ]; then
+    m=$(get_number_of_screenshot_files "$prefix")
+  else
+    m=0
+  fi
+  if [ $n -eq 0 -o $m -ne $n ]; then
     run "$SCRIPT_DIR/take-screenshots-of-roi-bounds.py" "$DATABASE" $VERBOSE_FLAGS \
         --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
-        --prefix "$SCREENSHOTS_DIR/roi-bounds" \
+        --prefix "$prefix" \
         --range ${range[@]} \
         --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
         --line-width $LINE_WIDTH
@@ -215,12 +233,18 @@ take_screenshots()
   # save screenshots with initial surface overlaid
   skip=true
   [ $skip = true ] || {
+    prefix="$SCREENSHOTS_DIR/roi-initial-surface"
     n=$(get_number_of_screenshots_with_initial_surface)
-    if [ $n -eq 0 ]; then
+    if [ $n -gt 0 ]; then
+      m=$(get_number_of_screenshot_files "$prefix")
+    else
+      m=0
+    fi
+    if [ $n -eq 0 -o $m -ne $n ]; then
       run "$SCRIPT_DIR/take-screenshots.py" "$DATABASE" $VERBOSE_FLAGS \
           --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
           --overlay $INITIAL_SURFACE_ID "$INITIAL_SURFACE" \
-          --prefix "$SCREENSHOTS_DIR/roi-initial-surface" \
+          --prefix "$prefix" \
           --range ${range[@]} \
           --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
           --line-width $LINE_WIDTH
@@ -233,12 +257,18 @@ take_screenshots()
   }
 
   # save screenshots with white matter surface overlaid
+  prefix="$SCREENSHOTS_DIR/roi-white-matter-surface"
   n=$(get_number_of_screenshots_with_white_matter_surface)
-  if [ $n -eq 0 ]; then
+  if [ $n -gt 0 ]; then
+    m=$(get_number_of_screenshot_files "$prefix")
+  else
+    m=0
+  fi
+  if [ $n -eq 0 -o $m -ne $n ]; then
     run "$SCRIPT_DIR/take-screenshots.py" "$DATABASE" $VERBOSE_FLAGS \
         --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
         --overlay $WHITE_MATTER_SURFACE_ID "$WHITE_MATTER_SURFACE" \
-        --prefix "$SCREENSHOTS_DIR/roi-white-matter-surface" \
+        --prefix "$prefix" \
         --range ${range[@]} \
         --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
         --line-width $LINE_WIDTH
@@ -250,12 +280,18 @@ take_screenshots()
   fi
 
   # save screenshots with vol2mesh surface overlaid
+  prefix="$SCREENSHOTS_DIR/roi-vol2mesh-surface"
   n=$(get_number_of_screenshots_with_vol2mesh_surface)
-  if [ $n -eq 0 ]; then
+  if [ $n -gt 0 ]; then
+    m=$(get_number_of_screenshot_files "$prefix")
+  else
+    m=0
+  fi
+  if [ $n -eq 0 -o $m -ne $n ]; then
     run "$SCRIPT_DIR/take-screenshots.py" "$DATABASE" $VERBOSE_FLAGS \
         --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
         --overlay $VOL2MESH_SURFACE_ID "$VOL2MESH_SURFACE" \
-        --prefix "$SCREENSHOTS_DIR/roi-vol2mesh-surface" \
+        --prefix "$prefix" \
         --range ${range[@]} \
         --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
         --line-width $LINE_WIDTH
@@ -269,14 +305,20 @@ take_screenshots()
   # save screenshots with both initial and white matter surface overlaid
   skip=false
   [ $skip = true ] || {
+    prefix="$SCREENSHOTS_DIR/roi-initial-and-white-matter-surface"
     n=$(get_number_of_screenshots_with_initial_and_white_matter_surface)
-    if [ $n -eq 0 ]; then
-
+    if [ $n -gt 0 ]; then
+      m=$(get_number_of_screenshot_files "$prefix")
+      let m="$m / 3"
+    else
+      m=0
+    fi
+    if [ $n -eq 0 -o $m -ne $n ]; then
         run "$SCRIPT_DIR/take-screenshots.py" "$DATABASE" $VERBOSE_FLAGS \
             --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
             --overlay $INITIAL_SURFACE_ID "$INITIAL_SURFACE" \
             --overlay $WHITE_MATTER_SURFACE_ID "$WHITE_MATTER_SURFACE" \
-            --prefix "$SCREENSHOTS_DIR/roi-initial-and-white-matter-surface" \
+            --prefix "$prefix" \
             --range ${range[@]} \
             --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
             --line-width $LINE_WIDTH \
@@ -290,13 +332,20 @@ take_screenshots()
   }
 
   # save screenshots with both vol2mesh and white matter surface overlaid
+  prefix="$SCREENSHOTS_DIR/roi-vol2mesh-and-white-matter-surface"
   n=$(get_number_of_screenshots_with_vol2mesh_and_white_matter_surface)
-  if [ $n -eq 0 ]; then
+  if [ $n -gt 0 ]; then
+    m=$(get_number_of_screenshot_files "$prefix")
+    let m="$m / 3"
+  else
+    m=0
+  fi
+  if [ $n -eq 0 -o $m -ne $n ]; then
     run "$SCRIPT_DIR/take-screenshots.py" "$DATABASE" $VERBOSE_FLAGS \
         --subject "$SUBJECT" --session "$SESSION" --image "$IMAGE" \
         --overlay $WHITE_MATTER_SURFACE_ID "$WHITE_MATTER_SURFACE" \
         --overlay $VOL2MESH_SURFACE_ID "$VOL2MESH_SURFACE" \
-        --prefix "$SCREENSHOTS_DIR/roi-vol2mesh-and-white-matter-surface" \
+        --prefix "$prefix" \
         --range ${range[@]} \
         --subdiv $NUM_SUBDIVS --offsets ${ROI_OFFSETS[@]} \
         --line-width $LINE_WIDTH \
